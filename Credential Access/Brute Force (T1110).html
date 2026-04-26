@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Brute Force (T1110)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+	<h1>Brute Force <a href="https://attack.mitre.org/techniques/T1110/">T1110</a></h1>
+<h2>Detection Explanation</h2>
+<p>Brute force attacks involve adversaries attempting to gain access to accounts by systematically trying multiple passwords or credentials until the correct one is found. This technique is commonly used during the initial access phase or when attempting to escalate privileges within a compromised environment. Attackers leverage automated tools to rapidly test credential combinations against authentication endpoints such as RDP, SSH, web applications, or domain controllers.</p>
+<p>Adversaries use brute force attacks to obtain valid credentials that enable persistence, lateral movement, and access to sensitive systems. Common variants include password guessing (T1110.001), password cracking (T1110.002), password spraying (T1110.003), and credential stuffing (T1110.004). Password spraying—where a few common passwords are tested across many accounts—is particularly prevalent as it evades traditional account lockout policies by staying below lockout thresholds per account.</p>
+<p>Successful brute force attacks grant attackers legitimate credentials, making their subsequent activities blend with normal user behavior. This makes detection critical at the authentication phase, as post-compromise activity may appear authorized. The impact includes unauthorized access to systems, privilege escalation, data exfiltration, and potential lateral movement throughout the network.</p>
+<p>Detection requires establishing baselines of normal authentication patterns and monitoring for deviations such as rapid failed login attempts, login attempts from unusual sources, authentication to multiple accounts from single sources, or successful logins following numerous failures. Organizations should correlate authentication logs across multiple systems to identify distributed brute force campaigns.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>Multiple failed authentication attempts from single source</li>
+<li>Successful logon following multiple failed attempts (T1110)</li>
+<li>Authentication attempts across multiple accounts from single source (T1110.003)</li>
+<li>Failed logons with valid usernames but invalid passwords</li>
+<li>Authentication attempts outside business hours or from unusual geographic locations</li>
+<li>High-volume authentication requests to specific services (RDP, SSH, web applications)</li>
+<li>Account lockouts across multiple accounts in short timeframe</li>
+<li>Authentication attempts to disabled or non-existent accounts</li>
+<li>Successful authentications from previously failed source IPs</li>
+<li>Unusual authentication protocols or legacy protocol usage</li>
+</ol>
+<hr>
+<h3>1. Multiple Failed Authentication Attempts from Single Source</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4625 (Failed logon) - Account logon failures</li>
+<li>Event ID 4771 (Kerberos pre-authentication failed) - Failed domain authentication</li>
+<li>Event ID 4776 (NTLM authentication failed) - Failed NTLM authentication attempts</li>
+<li>Key fields: <code>TargetUserName</code>, <code>WorkstationName</code>, <code>IpAddress</code>, <code>FailureReason</code>, <code>LogonType</code></li>
+</ul>
+<p><strong>Linux/Unix Logs:</strong></p>
+<ul>
+<li><code>/var/log/auth.log</code> or <code>/var/log/secure</code> - Failed SSH authentication attempts</li>
+<li>Look for “Failed password” or “authentication failure” entries</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Firewall logs - Connection attempts to authentication ports (3389/RDP, 22/SSH, 445/SMB)</li>
+<li>IDS/IPS - Signatures for brute force patterns</li>
+<li>VPN logs - Failed VPN authentication attempts</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>More than 5-10 failed attempts within 5-minute window from same source IP</li>
+<li>Failed attempts using different usernames from single source</li>
+<li>Consistent time intervals between attempts (indicating automated tools)</li>
+<li>Failed attempts targeting privileged accounts (Administrator, root, service accounts)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Source IPs from unexpected geographic regions or known VPS/cloud provider ranges</li>
+<li>Failed attempts using common usernames (<code>admin</code>, <code>administrator</code>, <code>test</code>, <code>user</code>)</li>
+<li>FailureReason code <code>0xC000006A</code> (incorrect password with valid username)</li>
+<li>Logon Type 3 (network) or Type 10 (remote interactive/RDP) from external sources</li>
+</ul>
+<hr>
+<h3>2. Successful Logon Following Multiple Failed Attempts</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4624 (Successful logon) - Successful authentication</li>
+<li>Event ID 4768 (Kerberos TGT requested) - Successful Kerberos authentication</li>
+<li>Event ID 4769 (Kerberos service ticket requested) - Service access after authentication</li>
+<li>Correlate with preceding Event ID 4625 failures from same source IP</li>
+</ul>
+<p><strong>Linux/Unix Logs:</strong></p>
+<ul>
+<li><code>/var/log/auth.log</code> or <code>/var/log/secure</code> - “Accepted password” or “session opened” following failures</li>
+</ul>
+<p><strong>Application Logs:</strong></p>
+<ul>
+<li>Web server logs (IIS, Apache, Nginx) - HTTP 200/302 responses following 401/403 errors</li>
+<li>Database logs - Successful connections following authentication errors</li>
+<li>Email gateway logs - Successful SMTP/IMAP/POP3 authentication after failures</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Successful logon within 1-hour window following 5+ failed attempts from same source</li>
+<li>Account that was successfully accessed after failed attempts on multiple accounts</li>
+<li>Time between last failure and successful authentication (rapid success suggests automated tools)</li>
+<li>Successful logon using LogonType 3 or 10 from external/unusual IP</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Account not previously accessed from the successful source IP or location</li>
+<li>Successful logon outside user’s normal working hours</li>
+<li>Post-authentication activity deviates from user’s baseline behavior</li>
+<li>Multiple accounts successfully accessed from same source IP in short timeframe</li>
+</ul>
+<hr>
+<h3>3. Authentication Attempts Across Multiple Accounts from Single Source (Password Spraying)</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4625 - Pattern of single/few failures per account across many accounts</li>
+<li>Event ID 4648 (Explicit credential usage) - Attempts to authenticate with different credentials</li>
+<li>Event ID 4771 - Kerberos pre-authentication failures across multiple usernames</li>
+</ul>
+<p><strong>Active Directory Logs:</strong></p>
+<ul>
+<li>Event ID 4740 (Account lockout) - Multiple accounts locked simultaneously</li>
+<li>Event ID 4767 (Account unlocked) - Pattern of lockouts and unlocks</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Authentication server logs - Login attempts to multiple accounts from single IP</li>
+<li>Load balancer logs - Authentication requests distributed across multiple accounts</li>
+<li>Proxy logs - Authentication attempts through proxy from single source</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Single source IP attempting authentication to 10+ different accounts</li>
+<li>Time pattern: 1-2 attempts per account to avoid lockouts, then moving to next account</li>
+<li>Attempts using common weak passwords (<code>Password123</code>, <code>Spring2025</code>, <code>Company123</code>)</li>
+<li>Systematic progression through user list (alphabetical, by department)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Source IP from cloud/VPS providers, TOR exit nodes, or anonymization services</li>
+<li>Attempts using corporate password patterns (e.g., <code>CompanyName</code> + season + year)</li>
+<li>Authentication attempts to accounts across different departments or privilege levels</li>
+<li>Failed attempts with error code <code>0xC000006A</code> (valid username, wrong password)</li>
+<li>Attempts occurring over extended period (hours/days) to evade rate limiting</li>
+</ul>
+<hr>
+<h3>4. Failed Logons with Valid Usernames but Invalid Passwords</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4625 with SubStatus <code>0xC000006A</code> - Correct username, incorrect password</li>
+<li>Event ID 4771 with FailureCode <code>0x18</code> - Pre-authentication information invalid (wrong password)</li>
+<li>Distinguish from SubStatus <code>0xC0000064</code> (username doesn’t exist)</li>
+</ul>
+<p><strong>Application-Specific Logs:</strong></p>
+<ul>
+<li>Web application logs - 401 responses with username in POST data</li>
+<li>Database audit logs - Failed authentication attempts with valid database accounts</li>
+<li>Email server logs (Exchange, Office 365) - Failed OWA/ActiveSync authentication</li>
+</ul>
+<p><strong>SIEM Correlation:</strong></p>
+<ul>
+<li>Filter for Event ID 4625 where username exists in Active Directory</li>
+<li>Aggregate by source IP and username over time windows</li>
+<li>Track accounts targeted by valid-username failures</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Repeated attempts with valid usernames indicates attacker has user enumeration</li>
+<li>Concentration on high-value accounts (executives, IT staff, service accounts)</li>
+<li>Attempts during non-business hours when users unlikely to be authenticating</li>
+<li>Pattern of valid usernames suggests compromised user list or LDAP enumeration</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>More than 3 failures per valid username from same source within 15 minutes</li>
+<li>Failures against recently created accounts (attacker using current user list)</li>
+<li>Systematic attempts through organizational hierarchy or department groupings</li>
+<li>Valid username attempts from geographic regions where organization has no presence</li>
+</ul>
+<hr>
+<h3>5. Authentication Attempts Outside Business Hours or from Unusual Geographic Locations</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4624/4625 with timestamp outside 08:00-18:00 local business hours</li>
+<li>Event ID 4768/4771 for Kerberos attempts during off-hours</li>
+<li>Correlate with user’s historical logon patterns</li>
+</ul>
+<p><strong>VPN and Remote Access Logs:</strong></p>
+<ul>
+<li>VPN concentrator logs - Connection attempts from unexpected countries</li>
+<li>Remote Desktop Gateway logs - RDP connections from unusual geolocations</li>
+<li>Cloud authentication logs (Azure AD, Okta) - Sign-ins from impossible travel scenarios</li>
+</ul>
+<p><strong>Network Geolocation:</strong></p>
+<ul>
+<li>Firewall logs with GeoIP correlation - Source country/city of authentication attempts</li>
+<li>Web application firewall - HTTP authentication from blacklisted regions</li>
+<li>DNS logs - Authentication attempts correlated with suspicious DNS queries</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Authentication attempts during 00:00-05:00 local time (common attack window)</li>
+<li>Source IPs from countries where organization has no offices or remote workers</li>
+<li>“Impossible travel” - Authentication from two distant locations within impossible timeframe</li>
+<li>First-time authentication from new geographic region without VPN</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Failed or successful logons from high-risk countries (based on threat intelligence)</li>
+<li>Weekend/holiday authentication attempts by users who typically only work weekdays</li>
+<li>Authentication from residential ISP IPs when user typically uses corporate VPN</li>
+<li>Time zone mismatch between user’s location and authentication source</li>
+<li>Simultaneous authentication attempts from multiple geographic locations</li>
+</ul>
+<hr>
+<h3>6. High-Volume Authentication Requests to Specific Services</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4625 - Clustered by <code>LogonType</code> to identify targeted service
+<ul>
+<li>LogonType 3: Network (SMB, file shares)</li>
+<li>LogonType 8: NetworkCleartext (IIS basic auth)</li>
+<li>LogonType 10: RemoteInteractive (RDP)</li>
+</ul>
+</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - High connection volume to ports 3389, 22, 445, 1433, 5432</li>
+<li>Correlate with authentication events to identify brute force targets</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Netflow/IPFIX - High packet/session count to authentication ports from single source</li>
+<li>Firewall logs - Connection attempts exceeding baseline to RDP (3389), SSH (22), or web apps (443)</li>
+<li>Load balancer logs - Unusual request volume to authentication endpoints</li>
+</ul>
+<p><strong>Service-Specific Logs:</strong></p>
+<ul>
+<li>RDP logs - Event ID 1149 (Terminal Services RemoteConnectionManager operational log)</li>
+<li>SSH daemon logs - High frequency of “Connection from…” entries</li>
+<li>Web server logs - Excessive POST requests to <code>/login</code>, <code>/auth</code>, or authentication APIs</li>
+<li>Database logs - Repeated connection failures from same source</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>More than 50 authentication attempts per minute to single service</li>
+<li>Sustained high-volume attempts over 10+ minutes (indicating automated tools)</li>
+<li>Single source targeting multiple services simultaneously</li>
+<li>Authentication attempts to services not commonly used (e.g., RDP to domain controllers from internet)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Source IP making 100+ connection attempts without successful authentication</li>
+<li>Authentication requests with no user-agent string or suspicious user-agents</li>
+<li>Requests bypassing expected authentication flow (direct API calls)</li>
+<li>Connection attempts continuing after service responds with errors</li>
+<li>High bandwidth consumption on authentication services without corresponding successful sessions</li>
+</ul>
+<hr>
+<h3>7. Account Lockouts Across Multiple Accounts in Short Timeframe</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4740 (Account locked out) - User account lockouts</li>
+<li>Event ID 4767 (Account unlocked) - Account unlock events</li>
+<li>Event ID 4625 preceding lockouts - Failed attempts leading to lockout</li>
+<li>Key fields: <code>TargetUserName</code>, <code>CallerComputerName</code>, timestamp</li>
+</ul>
+<p><strong>Active Directory Domain Controller Logs:</strong></p>
+<ul>
+<li>Event ID 4771 with Result Code <code>0x12</code> (account locked) - Kerberos lockouts</li>
+<li>Event ID 644 (older Windows) - Account lockout events</li>
+<li>PDC Emulator logs - Authoritative lockout source</li>
+</ul>
+<p><strong>Help Desk/Ticketing Systems:</strong></p>
+<ul>
+<li>Tickets for password resets or account unlocks</li>
+<li>Correlate help desk activity with Event ID 4740</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>3+ accounts locked within 10-minute window (suggests password spraying)</li>
+<li>Accounts locked that don’t typically experience lockouts</li>
+<li>Lockout source from external IP or unusual internal system</li>
+<li>Privileged accounts (administrators, service accounts) experiencing lockouts</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Lockouts during off-hours when users unlikely to mistype passwords</li>
+<li>Pattern of lockouts progressing alphabetically or by department</li>
+<li>Accounts locked from same source system or IP address</li>
+<li>Service accounts locked (indicates automated authentication attempts)</li>
+<li>Lockouts of disabled accounts (shows attacker using outdated user lists)</li>
+<li>Correlation between lockouts and preceding Event ID 4625 spike</li>
+</ul>
+<hr>
+<h3>8. Authentication Attempts to Disabled or Non-Existent Accounts</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4625 with SubStatus <code>0xC0000064</code> - Account does not exist</li>
+<li>Event ID 4625 with SubStatus <code>0xC0000072</code> - Account disabled</li>
+<li>Event ID 4625 with SubStatus <code>0xC0000193</code> - Account expired</li>
+<li>Event ID 4771 with FailureCode <code>0x6</code> - Client principal unknown (user doesn’t exist)</li>
+</ul>
+<p><strong>Active Directory Logs:</strong></p>
+<ul>
+<li>Failed bind attempts in Directory Service logs</li>
+<li>LDAP query logs showing enumeration attempts</li>
+</ul>
+<p><strong>Application Logs:</strong></p>
+<ul>
+<li>Web application authentication attempts to non-existent usernames</li>
+<li>Database authentication failures for dropped user accounts</li>
+<li>Email authentication attempts to deleted mailboxes</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Repeated attempts to same non-existent account (attacker unaware account invalid)</li>
+<li>Systematic attempts through common usernames (<code>admin</code>, <code>test</code>, <code>administrator</code>)</li>
+<li>Attempts to recently disabled accounts (indicates attacker using stale user list)</li>
+<li>Failed attempts to accounts that never existed (random username generation)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>High volume of <code>0xC0000064</code> errors from single source IP</li>
+<li>Attempts to default/common account names across multiple systems</li>
+<li>Authentication attempts to admin accounts that were disabled as security measure</li>
+<li>Attempts to accounts disabled within past 30 days (suggests reconnaissance occurred previously)</li>
+<li>Pattern suggesting username enumeration (alphabetical, sequential attempts)</li>
+<li>Attempts to service account naming conventions that don’t exist (e.g., <code>svc_backup</code>, <code>svc_sql</code>)</li>
+</ul>
+<hr>
+<h3>9. Successful Authentications from Previously Failed Source IPs</h3>
+<p><strong>SIEM Correlation:</strong></p>
+<ul>
+<li>Cross-reference Event ID 4624 (success) with historical Event ID 4625 (failures) by source IP</li>
+<li>Track source IPs with failed attempts that later show successful authentication</li>
+<li>Monitor time delta between first failure and eventual success</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Firewall logs - Track IPs with both denied and allowed authentication traffic</li>
+<li>IDS/IPS - Correlate brute force signatures with subsequent successful connections</li>
+<li>Threat intelligence - Compare successful authentication IPs with known malicious infrastructure</li>
+</ul>
+<p><strong>Endpoint Detection:</strong></p>
+<ul>
+<li>EDR logs - Processes spawned following successful authentication from suspicious source</li>
+<li>Event ID 4688 (Process creation) immediately following Event ID 4624 from flagged IP</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Source IPs that had 10+ failures over past 24-48 hours now showing success</li>
+<li>Successful authentication using different account than those that failed</li>
+<li>Post-authentication activity indicating malicious intent (reconnaissance, lateral movement)</li>
+<li>Geographic or network indicators suggesting compromised source IP</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Success after extended failure period suggests credential compromise or password cracking</li>
+<li>Successful account differs from failed attempts (attacker switched targets)</li>
+<li>Post-authentication: unusual processes, file access, network connections</li>
+<li>Source IP on threat intelligence feeds or associated with VPN/proxy services</li>
+<li>Successful logon followed by immediate lateral movement attempts</li>
+<li>Authentication source IP has no prior legitimate history in environment</li>
+</ul>
+<hr>
+<h3>10. Unusual Authentication Protocols or Legacy Protocol Usage</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4624 with LogonType 8 (NetworkCleartext) - Credentials sent in clear text</li>
+<li>Event ID 4776 (NTLM authentication) - Legacy NTLM instead of Kerberos</li>
+<li>Event ID 4768/4769 absence when Event ID 4776 present - Systems not using Kerberos</li>
+</ul>
+<p><strong>Network Traffic Analysis:</strong></p>
+<ul>
+<li>Packet captures - Clear text protocols (Telnet port 23, FTP port 21)</li>
+<li>Protocol analysis - NTLM authentication traffic patterns</li>
+<li>TLS/SSL inspection - Legacy SSL/TLS versions (SSLv3, TLS 1.0)</li>
+</ul>
+<p><strong>Application Logs:</strong></p>
+<ul>
+<li>Web server logs - Basic authentication instead of modern OAuth/SAML</li>
+<li>Database logs - Connections without encrypted authentication</li>
+<li>Email logs - POP3/IMAP without SSL/TLS</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) to legacy service ports</li>
+<li>Monitor connections to ports 23 (Telnet), 21 (FTP), 139 (NetBIOS)</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>NTLM authentication when environment primarily uses Kerberos</li>
+<li>Clear text protocol usage in environments where encrypted alternatives available</li>
+<li>Legacy authentication to modern systems (suggests deliberate downgrade)</li>
+<li>Authentication without MFA when policy requires it</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>NTLM authentication attempts after Kerberos pre-auth failures (pass-the-hash attempts)</li>
+<li>Basic authentication to web applications from unusual sources</li>
+<li>Protocol downgrade from secure to insecure (Kerberos to NTLM, HTTPS to HTTP)</li>
+<li>Legacy protocol usage from systems that previously used modern protocols</li>
+<li>Clear text authentication over internet-facing services</li>
+<li>Authentication attempts using deprecated protocols disabled in security policy</li>
+</ul>
+<hr>
+<h1>Brute Force Attack Investigation Checklist</h1>
+
+<h2>1. Multiple Failed Authentication Attempts</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4625 for 5-10+ failed attempts within 5-minute window from same source IP</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4771 (Kerberos pre-auth failed) for domain authentication failures</label></li>
+  <li><label><input type="checkbox"> Monitor Event ID 4776 for failed NTLM authentication attempts</label></li>
+  <li><label><input type="checkbox"> Identify FailureReason code 0xC000006A (incorrect password with valid username)</label></li>
+  <li><label><input type="checkbox"> Look for failed attempts using common usernames: admin, administrator, test, user</label></li>
+  <li><label><input type="checkbox"> Check Linux /var/log/auth.log for "Failed password" entries</label></li>
+  <li><label><input type="checkbox"> Review source IPs from unexpected geographic regions or cloud/VPS providers</label></li>
+  <li><label><input type="checkbox"> Monitor LogonType 3 (network) or Type 10 (RDP) from external sources</label></li>
+</ul>
+
+<h2>2. Successful Logon After Failed Attempts</h2>
+<ul>
+  <li><label><input type="checkbox"> Correlate Event ID 4624 (success) with preceding Event ID 4625 from same source</label></li>
+  <li><label><input type="checkbox"> Check for successful logon within 1-hour following 5+ failed attempts</label></li>
+  <li><label><input type="checkbox"> Review Linux /var/log/auth.log for "Accepted password" following failures</label></li>
+  <li><label><input type="checkbox"> Identify web server HTTP 200/302 responses following 401/403 errors</label></li>
+  <li><label><input type="checkbox"> Look for successful logon outside user's normal working hours</label></li>
+  <li><label><input type="checkbox"> Check for account not previously accessed from successful source IP</label></li>
+  <li><label><input type="checkbox"> Monitor post-authentication activity for deviations from user baseline</label></li>
+  <li><label><input type="checkbox"> Review multiple accounts accessed from same source IP in short timeframe</label></li>
+</ul>
+
+<h2>3. Password Spraying Detection</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4625 for pattern of 1-2 failures per account across 10+ accounts</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4740 for multiple accounts locked simultaneously</label></li>
+  <li><label><input type="checkbox"> Identify single source IP attempting authentication to many different accounts</label></li>
+  <li><label><input type="checkbox"> Look for common weak passwords: Password123, Spring2025, Company123</label></li>
+  <li><label><input type="checkbox"> Monitor source IPs from cloud/VPS providers, TOR exit nodes, anonymization services</label></li>
+  <li><label><input type="checkbox"> Check for systematic progression through user list (alphabetical, by department)</label></li>
+  <li><label><input type="checkbox"> Review attempts using corporate password patterns: CompanyName + season + year</label></li>
+  <li><label><input type="checkbox"> Identify attempts over extended periods (hours/days) to evade rate limiting</label></li>
+</ul>
+
+<h2>4. Valid Username, Invalid Password Attempts</h2>
+<ul>
+  <li><label><input type="checkbox"> Filter Event ID 4625 with SubStatus 0xC000006A (correct username, wrong password)</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4771 with FailureCode 0x18 (pre-auth invalid - wrong password)</label></li>
+  <li><label><input type="checkbox"> Distinguish from SubStatus 0xC0000064 (username doesn't exist)</label></li>
+  <li><label><input type="checkbox"> Monitor 3+ failures per valid username from same source within 15 minutes</label></li>
+  <li><label><input type="checkbox"> Identify concentration on high-value accounts: executives, IT staff, service accounts</label></li>
+  <li><label><input type="checkbox"> Look for failures against recently created accounts</label></li>
+  <li><label><input type="checkbox"> Review systematic attempts through organizational hierarchy</label></li>
+  <li><label><input type="checkbox"> Check for valid username attempts from regions with no organizational presence</label></li>
+</ul>
+
+<h2>5. Off-Hours and Unusual Geographic Access</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4624/4625 with timestamps outside business hours (08:00-18:00)</label></li>
+  <li><label><input type="checkbox"> Check authentication attempts during 00:00-05:00 local time</label></li>
+  <li><label><input type="checkbox"> Monitor VPN logs for connections from unexpected countries</label></li>
+  <li><label><input type="checkbox"> Identify "impossible travel" scenarios (authentication from distant locations rapidly)</label></li>
+  <li><label><input type="checkbox"> Look for failed/successful logons from high-risk countries</label></li>
+  <li><label><input type="checkbox"> Check weekend/holiday authentication by weekday-only users</label></li>
+  <li><label><input type="checkbox"> Review authentication from residential ISPs when users typically use corporate VPN</label></li>
+  <li><label><input type="checkbox"> Monitor simultaneous authentication from multiple geographic locations</label></li>
+</ul>
+
+<h2>6. High-Volume Authentication Requests</h2>
+<ul>
+  <li><label><input type="checkbox"> Check for 50+ authentication attempts per minute to single service</label></li>
+  <li><label><input type="checkbox"> Monitor Event ID 4625 clustered by LogonType to identify targeted service</label></li>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 3 for high connection volume to ports 3389, 22, 445</label></li>
+  <li><label><input type="checkbox"> Identify 100+ connection attempts without successful authentication</label></li>
+  <li><label><input type="checkbox"> Look for sustained high-volume attempts over 10+ minutes</label></li>
+  <li><label><input type="checkbox"> Check web server POST requests to /login, /auth endpoints</label></li>
+  <li><label><input type="checkbox"> Monitor SSH logs for high frequency "Connection from…" entries</label></li>
+  <li><label><input type="checkbox"> Review database logs for repeated connection failures from same source</label></li>
+</ul>
+
+<h2>7. Account Lockout Patterns</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4740 for 3+ accounts locked within 10-minute window</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4767 for patterns of lockouts and unlocks</label></li>
+  <li><label><input type="checkbox"> Monitor Event ID 4771 with Result Code 0x12 (account locked)</label></li>
+  <li><label><input type="checkbox"> Identify lockouts during off-hours when users unlikely to mistype passwords</label></li>
+  <li><label><input type="checkbox"> Look for pattern of lockouts progressing alphabetically or by department</label></li>
+  <li><label><input type="checkbox"> Check for privileged accounts (administrators, service accounts) experiencing lockouts</label></li>
+  <li><label><input type="checkbox"> Review lockouts of disabled accounts (attacker using outdated user lists)</label></li>
+  <li><label><input type="checkbox"> Correlate lockouts with preceding Event ID 4625 spikes</label></li>
+</ul>
+
+<h2>8. Disabled/Non-Existent Account Attempts</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4625 with SubStatus 0xC0000064 (account does not exist)</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4625 with SubStatus 0xC0000072 (account disabled)</label></li>
+  <li><label><input type="checkbox"> Monitor Event ID 4771 with FailureCode 0x6 (client principal unknown)</label></li>
+  <li><label><input type="checkbox"> Identify high volume of 0xC0000064 errors from single source IP</label></li>
+  <li><label><input type="checkbox"> Look for attempts to default/common account names: admin, test, administrator</label></li>
+  <li><label><input type="checkbox"> Check attempts to recently disabled accounts (within past 30 days)</label></li>
+  <li><label><input type="checkbox"> Review systematic attempts through common usernames</label></li>
+  <li><label><input type="checkbox"> Monitor attempts to service account naming conventions that don't exist</label></li>
+</ul>
+
+<h2>9. Previously Failed IPs with Successful Authentication</h2>
+<ul>
+  <li><label><input type="checkbox"> Correlate Event ID 4624 (success) with historical Event ID 4625 (failures) by source IP</label></li>
+  <li><label><input type="checkbox"> Check source IPs with 10+ failures over past 24-48 hours now showing success</label></li>
+  <li><label><input type="checkbox"> Review successful authentication using different account than failed attempts</label></li>
+  <li><label><input type="checkbox"> Monitor post-authentication activity: unusual processes, file access, network connections</label></li>
+  <li><label><input type="checkbox"> Identify source IPs on threat intelligence feeds</label></li>
+  <li><label><input type="checkbox"> Look for successful logon followed by immediate lateral movement</label></li>
+  <li><label><input type="checkbox"> Check authentication source IP with no prior legitimate history</label></li>
+  <li><label><input type="checkbox"> Timeline: Extended failures → Success → Suspicious post-authentication activity</label></li>
+</ul>
+
+<h2>10. Legacy Protocol and Authentication Anomalies</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4624 with LogonType 8 (NetworkCleartext - credentials in clear text)</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4776 (NTLM) when environment primarily uses Kerberos</label></li>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 3 for connections to legacy ports: 23 (Telnet), 21 (FTP), 139 (NetBIOS)</label></li>
+  <li><label><input type="checkbox"> Identify NTLM authentication after Kerberos pre-auth failures (pass-the-hash)</label></li>
+  <li><label><input type="checkbox"> Look for protocol downgrade from secure to insecure (Kerberos to NTLM)</label></li>
+  <li><label><input type="checkbox"> Check basic authentication to web applications from unusual sources</label></li>
+  <li><label><input type="checkbox"> Review clear text authentication over internet-facing services</label></li>
+  <li><label><input type="checkbox"> Monitor authentication without MFA when policy requires it</label></li>
+</ul>
+
+
+</body>
+</html>

@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Input Capture (T1056)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Input Capture: <a href="https://attack.mitre.org/techniques/T1056/">T1056</a></h1>
+<h2>Detection Explanation</h2>
+<p>Input Capture involves adversaries using methods to capture user input to obtain credentials, sensitive information, or other data entered by users. This technique enables attackers to intercept keystrokes, GUI input, web portal credentials, and other forms of user interaction with systems and applications. Input capture is commonly used during credential access and collection phases of an attack to steal authentication credentials, capture sensitive data as it’s typed, and monitor user activity.</p>
+<p>Attackers employ input capture to steal credentials as users type them, bypassing many security controls that protect stored credentials. Common methods include keylogging (T1056.001), GUI input capture (T1056.002), web portal capture (T1056.003), and credential API hooking (T1056.004). Tools range from commercial keyloggers and custom malware to PowerShell scripts and browser-based credential phishing. Hardware keyloggers can also be physically installed on target systems, though software-based keylogging is far more common in enterprise compromises.</p>
+<p>Successful input capture provides attackers with plaintext credentials, sensitive communications, confidential data, and other information users type or input into systems. Unlike credential dumping, input capture obtains credentials as they are actively used, often capturing multi-factor authentication codes, password manager master passwords, and credentials for systems not yet accessed by the attacker. The impact includes credential theft enabling further access, data exfiltration of typed communications and documents, privacy violations through monitoring all user input, and the ability to capture authentication to external services and applications.</p>
+<p>Detection requires monitoring for keylogging software installation, suspicious API hooking, unauthorized input method editors (IMEs), browser extensions with excessive permissions, and behavioral anomalies in input handling. Organizations should establish baselines for legitimate input capture tools used for accessibility or monitoring purposes and alert on unauthorized installations or suspicious input handling patterns such as hooks on keyboard APIs, processes accessing raw input devices, or clipboard monitoring by unexpected applications.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>Keylogging software installation and execution (T1056.001)</li>
+<li>API hooking for keystroke interception (T1056.001)</li>
+<li>Low-level keyboard hooks and event monitoring (T1056.001)</li>
+<li>Browser extensions with input capture capabilities (T1056.003)</li>
+<li>PowerShell-based keylogging scripts (T1056.001)</li>
+<li>Registry modifications for keyboard and input method persistence</li>
+<li>Clipboard monitoring and capture activity</li>
+<li>Credential harvesting from web forms (T1056.003)</li>
+<li>Process memory access to password manager applications (T1056.002)</li>
+<li>Raw input device access and monitoring</li>
+</ol>
+<hr>
+<h3>1. Keylogging Software Installation and Execution</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Keylogger executable creation</li>
+<li>Event ID 4697 (Service installed) - Keylogger service installation</li>
+<li>Event ID 7045 (System log) - Service installation with keylogger characteristics</li>
+<li>Key fields: <code>NewProcessName</code>, <code>ServiceName</code>, <code>CommandLine</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Keylogger process execution</li>
+<li>Event ID 6 (Driver loaded) - Keylogger kernel drivers</li>
+<li>Event ID 11 (File created) - Keylog file creation</li>
+<li>Event ID 13 (Registry value set) - Keylogger persistence registry changes</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 7045 (Service installed) - New keylogger services</li>
+<li>Event ID 7036 (Service state change) - Keylogger service starts</li>
+</ul>
+<p><strong>File Paths to Monitor:</strong></p>
+<ul>
+<li>Common keylogger installation directories: <code>%PROGRAMFILES%</code>, <code>%APPDATA%</code>, <code>%TEMP%</code></li>
+<li>Keylog output files: <code>.log</code>, <code>.txt</code>, <code>.dat</code> in user directories or hidden folders</li>
+<li>Hidden directories containing keylogger files: <code>C:\$Recycle.Bin\</code>, application data folders</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Installation of known keylogger applications by name or file hash</li>
+<li>Execution of unsigned or recently created executables with input capture capabilities</li>
+<li>Services or drivers with suspicious names related to keyboard or input monitoring</li>
+<li>File creation patterns indicating log storage of captured keystrokes</li>
+<li>Network connections from keylogger processes (exfiltrating captured data)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Known keylogger names: <code>keylogger.exe</code>, <code>refog.exe</code>, <code>ardamax.exe</code>, <code>spyrix.exe</code>, <code>kgb.exe</code>, <code>revealer.exe</code></li>
+<li>Processes with names containing “key”, “log”, “monitor”, “capture”, “spy”, “input”</li>
+<li>Executables in <code>%APPDATA%</code> or <code>%TEMP%</code> with keyboard monitoring capabilities</li>
+<li>Services with startup type set to automatic for persistence</li>
+<li>Kernel drivers loaded from non-standard locations: <code>%APPDATA%\drivers\</code>, <code>%TEMP%\</code></li>
+<li>File creation of hidden log files: <code>.log</code>, <code>keystrokes.txt</code>, <code>capture.dat</code> in hidden folders</li>
+<li>Processes running with SYSTEM privileges for input capture from all users</li>
+<li>Installation from removable media or downloaded archives without digital signatures</li>
+<li>Registry modifications for service or driver persistence under <code>HKLM\System\CurrentControlSet\Services\</code></li>
+<li>Network connections from keylogger processes to external IPs (exfiltration)</li>
+</ul>
+<hr>
+<h3>2. API Hooking for Keystroke Interception</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 7 (Image loaded) - DLL injection for API hooking</li>
+<li>Event ID 8 (CreateRemoteThread) - Remote thread injection into processes</li>
+<li>Event ID 10 (ProcessAccess) - Process access for hook installation</li>
+<li>Key fields: <code>TargetImage</code>, <code>SourceImage</code>, <code>CallTrace</code>, <code>GrantedAccess</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Processes performing API hooking</li>
+<li>Event ID 4656 (Handle to object requested) - Process handle requests for injection</li>
+</ul>
+<p><strong>Endpoint Detection and Response (EDR):</strong></p>
+<ul>
+<li>API hooking detection for <code>GetAsyncKeyState</code>, <code>GetKeyboardState</code>, <code>GetKeyState</code></li>
+<li>Hooking of <code>SetWindowsHookEx</code> with <code>WH_KEYBOARD</code> or <code>WH_KEYBOARD_LL</code> parameters</li>
+<li>Inline hooking of user32.dll or kernel32.dll functions</li>
+</ul>
+<p><strong>API Functions Commonly Hooked:</strong></p>
+<ul>
+<li><code>GetAsyncKeyState</code> - Query key state asynchronously</li>
+<li><code>GetKeyboardState</code> - Retrieve all key states</li>
+<li><code>GetKeyState</code> - Query specific key state</li>
+<li><code>SetWindowsHookEx</code> - Install keyboard hooks</li>
+<li><code>GetMessage</code> / <code>PeekMessage</code> - Message queue interception</li>
+<li><code>TranslateMessage</code> - Keyboard message translation</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>DLL injection into processes handling user input (explorer.exe, browser processes)</li>
+<li>Remote thread creation in system or application processes</li>
+<li>API hooks on keyboard and input-related Windows API functions</li>
+<li>Memory modifications in processes handling input</li>
+<li>CallTrace showing injection through suspicious DLLs</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>DLL injection into <code>explorer.exe</code>, <code>winlogon.exe</code>, or browser processes for input monitoring</li>
+<li>CreateRemoteThread targeting processes with user input handling capabilities</li>
+<li>Hooking of <code>GetAsyncKeyState</code>, <code>GetForegroundWindow</code>, <code>GetWindowText</code> APIs</li>
+<li><code>SetWindowsHookEx</code> with <code>WH_KEYBOARD_LL</code> (low-level keyboard hook) from unexpected processes</li>
+<li>CallTrace through unknown or unsigned DLLs in <code>%TEMP%</code>, <code>%APPDATA%</code>, or user directories</li>
+<li>Memory writes to input-related API function entry points (inline hooks)</li>
+<li>Processes accessing multiple application processes for hook installation</li>
+<li>DLLs loaded from <code>%TEMP%</code> or <code>%APPDATA%</code> into system processes like <code>explorer.exe</code></li>
+<li>API hooks installed by PowerShell or scripting engines</li>
+<li>Hooks persisting across process restarts or system reboots (persistence mechanism)</li>
+</ul>
+<hr>
+<h3>3. Low-Level Keyboard Hooks and Event Monitoring</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 10 (ProcessAccess) - Process access for hook installation</li>
+<li>Event ID 7 (Image loaded) - user32.dll loading for hook APIs</li>
+<li>Event ID 8 (CreateRemoteThread) - Thread injection for hook installation</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Processes installing keyboard hooks</li>
+<li>Event ID 4656 (Handle to object requested) - Process handle requests</li>
+</ul>
+<p><strong>Endpoint Detection and Response (EDR):</strong></p>
+<ul>
+<li>Detection of <code>SetWindowsHookEx</code> API calls with <code>WH_KEYBOARD_LL</code> parameter</li>
+<li>Monitoring for <code>WH_KEYBOARD</code> (legacy) and <code>WH_KEYBOARD_LL</code> (low-level) hooks</li>
+<li>Detection of global hooks affecting all applications</li>
+</ul>
+<p><strong>Hook Types:</strong></p>
+<ul>
+<li><code>WH_KEYBOARD_LL</code> (13) - Low-level keyboard hook (most common for keyloggers)</li>
+<li><code>WH_KEYBOARD</code> (2) - Standard keyboard hook (legacy)</li>
+<li><code>WH_GETMESSAGE</code> (3) - Message hook (can intercept keyboard messages)</li>
+<li><code>WH_CALLWNDPROC</code> (4) - Window procedure hook</li>
+</ul>
+<p><strong>API Calls to Monitor:</strong></p>
+<ul>
+<li><code>SetWindowsHookEx(WH_KEYBOARD_LL, ...)</code> - Install low-level keyboard hook</li>
+<li><code>SetWindowsHookEx(WH_KEYBOARD, ...)</code> - Install standard keyboard hook</li>
+<li><code>CallNextHookEx</code> - Hook chain processing</li>
+<li><code>UnhookWindowsHookEx</code> - Remove hook (cleanup)</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Installation of low-level keyboard hooks from unexpected processes</li>
+<li>Global hooks affecting all running applications</li>
+<li>Hook procedures in DLLs from non-standard locations</li>
+<li>Hooks persisting beyond normal application lifecycle</li>
+<li>Multiple keyboard hooks from same suspicious process</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>SetWindowsHookEx</code> called with <code>WH_KEYBOARD_LL</code> from PowerShell or script interpreters</li>
+<li>Keyboard hooks installed by processes in <code>%TEMP%</code>, <code>%APPDATA%</code>, or user directories</li>
+<li>Global keyboard hooks from unsigned executables or recently created files</li>
+<li>Hooks installed by processes without legitimate input handling requirements (not accessibility tools)</li>
+<li>Hook procedures located in DLLs from user-writable directories</li>
+<li>Multiple keyboard hooks installed simultaneously by single process</li>
+<li>Hooks that persist after parent process termination (orphaned hooks)</li>
+<li>Remote thread creation installing hooks in other processes</li>
+<li>Hooks installed during user logon or system startup for persistence</li>
+<li>Processes without GUI installing keyboard hooks (no visible windows)</li>
+</ul>
+<hr>
+<h3>4. Browser Extensions with Input Capture Capabilities</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4663 (Access attempted to object) - File access to browser extension directories</li>
+<li>Event ID 4656 (Handle to object requested) - Access to extension manifests</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File created) - New browser extension installation</li>
+<li>Event ID 1 (Process creation) - Browser processes loading extensions</li>
+<li>Event ID 3 (Network connection) - Extension communication to external servers</li>
+<li>Event ID 13 (Registry value set) - Extension installation registry changes</li>
+</ul>
+<p><strong>File Paths to Monitor:</strong></p>
+<ul>
+<li>Chrome extensions: <code>%LOCALAPPDATA%\Google\Chrome\User Data\Default\Extensions\</code></li>
+<li>Firefox extensions: <code>%APPDATA%\Mozilla\Firefox\Profiles\*.default\extensions\</code></li>
+<li>Edge extensions: <code>%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\Extensions\</code></li>
+</ul>
+<p><strong>Registry Keys:</strong></p>
+<ul>
+<li>Chrome policies: <code>HKLM\Software\Policies\Google\Chrome\ExtensionInstallForcelist</code></li>
+<li>Firefox policies: <code>HKLM\Software\Policies\Mozilla\Firefox\Extensions\Install</code></li>
+</ul>
+<p><strong>Extension Manifest Analysis:</strong></p>
+<ul>
+<li><code>manifest.json</code> permissions requesting excessive access</li>
+<li>Content scripts with wildcard URL patterns</li>
+<li>Background scripts with keyboard event listeners</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Installation of extensions requesting excessive permissions</li>
+<li>Extensions with content script injection capabilities</li>
+<li>Side-loaded or developer mode extensions</li>
+<li>Extensions communicating with suspicious external domains</li>
+<li>Extensions with obfuscated JavaScript code</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Extensions requesting permissions: <code>&quot;tabs&quot;</code>, <code>&quot;webRequest&quot;</code>, <code>&quot;webRequestBlocking&quot;</code>, <code>&quot;&lt;all_urls&gt;&quot;</code></li>
+<li>Manifest.json files with content_scripts matching all URLs: <code>&quot;matches&quot;: [&quot;&lt;all_urls&gt;&quot;]</code> or <code>&quot;matches&quot;: [&quot;http://*/*&quot;, &quot;https://*/*&quot;]</code></li>
+<li>Extensions loaded in developer mode or unpacked from local directories</li>
+<li>Recently installed extensions from unknown publishers without Chrome Web Store or Firefox Add-on IDs</li>
+<li>Extensions with obfuscated JavaScript code (base64, hex encoding, or minification beyond normal)</li>
+<li>Network connections from browser processes to suspicious domains after extension installation</li>
+<li>Extensions modifying form input fields or intercepting form submissions</li>
+<li>Registry-forced extension installations via Group Policy from non-corporate sources</li>
+<li>Extensions without store IDs (indicating side-loading)</li>
+<li>Background scripts with keyboard event listeners: <code>addEventListener('keydown')</code>, <code>addEventListener('keyup')</code>, <code>addEventListener('keypress')</code></li>
+</ul>
+<hr>
+<h3>5. PowerShell-Based Keylogging Scripts</h3>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - PowerShell keylogging script content</li>
+<li>Event ID 4103 (Module logging) - API calls for input capture</li>
+<li>Event ID 400 (PowerShell engine state) - PowerShell session tracking</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - PowerShell with suspicious parameters</li>
+<li>Event ID 4656 (Handle to object requested) - PowerShell accessing input APIs</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - PowerShell execution with keylogging indicators</li>
+<li>Event ID 3 (Network connection) - PowerShell exfiltrating captured keystrokes</li>
+<li>Event ID 11 (File created) - PowerShell creating log files for captured input</li>
+</ul>
+<p><strong>Script Content to Monitor:</strong></p>
+<ul>
+<li><code>[Windows.Input.Keyboard]</code>, <code>[System.Windows.Forms.Keys]</code></li>
+<li><code>GetAsyncKeyState</code>, <code>GetKeyState</code>, <code>GetKeyboardState</code></li>
+<li><code>Add-Type -MemberDefinition</code> with user32.dll imports</li>
+<li><code>[Windows.Forms.SendKeys]::SendWait</code></li>
+</ul>
+<p><strong>API Imports:</strong></p>
+<ul>
+<li><code>[DllImport(&quot;user32.dll&quot;)]</code> declarations</li>
+<li>P/Invoke signatures for keyboard APIs</li>
+<li>.NET reflection accessing input methods</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>PowerShell scripts calling Windows API functions for keyboard state</li>
+<li>Scripts with infinite loops monitoring keyboard input</li>
+<li>PowerShell accessing user32.dll for input capture</li>
+<li>Base64-encoded commands decoding to keylogging functionality</li>
+<li>Scripts writing captured input to files or network</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Script blocks containing <code>GetAsyncKeyState</code>, <code>GetKeyboardState</code>, user32.dll imports</li>
+<li>PowerShell commands with <code>Add-Type</code> defining keyboard input structures or P/Invoke signatures</li>
+<li>Scripts using <code>System.Windows.Forms.Keys</code> enumeration for key monitoring</li>
+<li>Infinite loops with <code>Start-Sleep</code> and keyboard state checking: <code>while($true) { ... Start-Sleep -Milliseconds 100 }</code></li>
+<li>PowerShell writing captured keystrokes to log files in <code>%TEMP%</code>, <code>%APPDATA%</code>, or hidden directories</li>
+<li>Base64-encoded commands decoding to keylogger code</li>
+<li>Scripts downloading keylogging modules from external sources: <code>IEX (New-Object Net.WebClient).DownloadString('http://...')</code></li>
+<li>Commands using .NET reflection to access input APIs</li>
+<li>PowerShell hooking keyboard events via Windows Forms</li>
+<li>Script blocks with output to network sockets or HTTP POST requests exfiltrating captured data</li>
+</ul>
+<hr>
+<h3>6. Registry Modifications for Keyboard and Input Method Persistence</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4657 (Registry value modification) - Registry changes for persistence</li>
+<li>Event ID 4656 (Handle to object requested) - Registry key access</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 12 (Registry object added/deleted) - New registry entries</li>
+<li>Event ID 13 (Registry value set) - Registry value modifications</li>
+<li>Event ID 14 (Registry object renamed) - Registry key changes</li>
+</ul>
+<p><strong>Registry Keys to Monitor:</strong></p>
+<ul>
+<li><code>HKLM\Software\Microsoft\Windows\CurrentVersion\Run</code> - Keylogger autostart</li>
+<li><code>HKCU\Software\Microsoft\Windows\CurrentVersion\Run</code> - User-level persistence</li>
+<li><code>HKLM\System\CurrentControlSet\Control\Keyboard Layout</code> - Keyboard layout modifications</li>
+<li><code>HKCU\Keyboard Layout\Preload</code> - Input method editor (IME) changes</li>
+<li><code>HKLM\Software\Microsoft\Windows NT\CurrentVersion\IMM</code> - IME registration</li>
+<li><code>HKLM\System\CurrentControlSet\Services\</code> - Driver/service persistence</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>reg add &quot;HKLM\Software\Microsoft\Windows\CurrentVersion\Run&quot; /v KeyLogger /d &quot;C:\malware.exe&quot;</code></li>
+<li><code>reg add &quot;HKCU\Keyboard Layout\Preload&quot; /v 1 /d &quot;malicious_ime&quot;</code></li>
+<li>PowerShell: <code>Set-ItemProperty -Path &quot;HKLM:\Software\...&quot; -Name Keylogger -Value &quot;C:\path\to\malware.exe&quot;</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Registry Run key modifications pointing to suspicious executables</li>
+<li>Changes to keyboard layout or IME configurations</li>
+<li>Persistence mechanisms for input capture tools</li>
+<li>Installation of malicious input method editors</li>
+<li>Service registration for keylogging drivers</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Run key entries with executables in <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\Public\</code>, or <code>C:\ProgramData\</code></li>
+<li>Registry values pointing to unsigned or recently created executables with suspicious names</li>
+<li>Keyboard Layout modifications installing custom IME DLLs from non-standard directories</li>
+<li>IME registration pointing to user-writable directories or suspicious DLL paths</li>
+<li>Registry changes from PowerShell or script interpreters rather than legitimate installers</li>
+<li>Scheduled task creation via registry for keylogger execution</li>
+<li>Debugger registry keys for persistence: <code>Image File Execution Options</code> with keylogger</li>
+<li>Registry modifications during off-hours or by non-administrative users</li>
+<li>Multiple registry persistence locations modified simultaneously</li>
+<li>Encoded registry values containing keylogger paths or obfuscated commands</li>
+</ul>
+<hr>
+<h3>7. Clipboard Monitoring and Capture Activity</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 7 (Image loaded) - DLLs with clipboard access capabilities</li>
+<li>Event ID 10 (ProcessAccess) - Process access for clipboard monitoring</li>
+<li>Event ID 11 (File created) - Clipboard content written to files</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Processes with clipboard monitoring capabilities</li>
+<li>Event ID 4656 (Handle to object requested) - Clipboard access attempts</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - PowerShell clipboard access scripts</li>
+</ul>
+<p><strong>API Calls to Monitor:</strong></p>
+<ul>
+<li><code>GetClipboardData</code> - Retrieve clipboard content</li>
+<li><code>OpenClipboard</code> / <code>CloseClipboard</code> - Clipboard access</li>
+<li><code>SetClipboardViewer</code> - Register for clipboard notifications</li>
+<li><code>AddClipboardFormatListener</code> - Monitor clipboard changes</li>
+<li>.NET: <code>System.Windows.Forms.Clipboard.GetText()</code>, <code>Clipboard.GetImage()</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Processes continuously monitoring clipboard contents</li>
+<li>Scripts capturing clipboard data at regular intervals</li>
+<li>Clipboard content written to log files or transmitted over network</li>
+<li>Processes installing clipboard format listeners</li>
+<li>Clipboard chains being hijacked or monitored</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>PowerShell scripts using <code>Get-Clipboard</code> or <code>[System.Windows.Forms.Clipboard]::GetText()</code></li>
+<li>Processes calling <code>SetClipboardViewer</code> from unexpected applications (not clipboard managers)</li>
+<li>Infinite loops monitoring clipboard: <code>while($true) { Get-Clipboard; Start-Sleep -Seconds 5 }</code></li>
+<li>Clipboard data written to files in <code>%TEMP%</code>, <code>%APPDATA%</code>, or hidden directories</li>
+<li>Network connections immediately after clipboard access (exfiltration)</li>
+<li>Processes hooking clipboard chain for continuous monitoring</li>
+<li>Scripts capturing clipboard at regular intervals (every few seconds)</li>
+<li>Clipboard content included in HTTP POST requests to external IPs</li>
+<li>Executables from <code>%TEMP%</code> or user directories accessing clipboard APIs repeatedly</li>
+<li>Multiple processes accessing clipboard simultaneously from same parent process</li>
+</ul>
+<hr>
+<h3>8. Credential Harvesting from Web Forms</h3>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Proxy logs - HTTP/HTTPS POST requests to suspicious domains</li>
+<li>Web application firewall - Form submissions to non-legitimate endpoints</li>
+<li>DNS logs - Queries to phishing or credential harvesting domains</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Browser connections to credential phishing sites</li>
+<li>Event ID 22 (DNS query) - DNS queries for phishing domains</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Browser processes accessing suspicious URLs</li>
+</ul>
+<p><strong>Browser/Web Server Logs:</strong></p>
+<ul>
+<li>Form submissions with credential field names to unexpected URLs</li>
+<li>JavaScript injection modifying form action attributes</li>
+<li>XHR/Fetch requests exfiltrating form data to external servers</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Browser extensions or injected scripts modifying form submission behavior</li>
+<li>Credentials submitted to domains not matching legitimate service URLs</li>
+<li>Man-in-the-browser attacks intercepting form data</li>
+<li>Fake login pages mimicking legitimate services</li>
+<li>Form data exfiltration to attacker-controlled infrastructure</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Form POST requests to IP addresses instead of domain names</li>
+<li>Submissions to domains with typosquatting patterns: <code>g00gle.com</code>, <code>micros0ft.com</code>, <code>paypa1.com</code></li>
+<li>JavaScript form modifications via browser extensions or injected scripts</li>
+<li>Credentials submitted over HTTP instead of HTTPS</li>
+<li>Form actions modified to point to attacker-controlled domains</li>
+<li>Duplicated form submissions (legitimate site + attacker site)</li>
+<li>Browser extensions with <code>&quot;webRequest&quot;</code> permissions intercepting form data</li>
+<li>Network traffic showing credentials sent to multiple destinations</li>
+<li>DNS queries to newly registered domains during login attempts</li>
+<li>Certificate warnings or SSL errors during credential submission</li>
+</ul>
+<hr>
+<h3>9. Process Memory Access to Password Manager Applications</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 10 (ProcessAccess) - Process memory access to password managers</li>
+<li>TargetImage: Password manager executables (<code>KeePass.exe</code>, <code>1Password.exe</code>, etc.)</li>
+<li>Key fields: <code>SourceImage</code>, <code>GrantedAccess</code>, <code>CallTrace</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4656 (Handle to object requested) - Process handle requests</li>
+<li>Event ID 4663 (Access attempted to object) - Process memory access</li>
+</ul>
+<p><strong>Endpoint Detection and Response (EDR):</strong></p>
+<ul>
+<li>Process memory access telemetry for password manager applications</li>
+<li>API call monitoring for <code>OpenProcess</code>, <code>ReadProcessMemory</code></li>
+</ul>
+<p><strong>Password Manager Processes:</strong></p>
+<ul>
+<li>KeePass: <code>KeePass.exe</code>, <code>KeePassXC.exe</code></li>
+<li>1Password: <code>1Password.exe</code></li>
+<li>LastPass: Browser-based (monitor browser processes)</li>
+<li>Bitwarden: <code>Bitwarden.exe</code>, browser extensions</li>
+<li>Dashlane: <code>Dashlane.exe</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Non-legitimate processes accessing password manager process memory</li>
+<li>Memory read access to processes with unlocked password databases</li>
+<li>Injection attempts into password manager processes</li>
+<li>Memory dumps of password manager applications</li>
+<li>Unusual parent-child relationships involving password managers</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>powershell.exe</code>, <code>cmd.exe</code>, or unknown processes accessing password manager memory</li>
+<li>GrantedAccess values indicating full memory read: <code>0x1FFFFF</code>, <code>0x1010</code>, <code>0x1438</code>, <code>0x1F0FFF</code></li>
+<li>Remote thread creation in password manager processes (Sysmon Event ID 8)</li>
+<li>Memory dumping tools accessing password manager processes: <code>procdump.exe</code>, <code>sqldumper.exe</code></li>
+<li>CallTrace through suspicious or unsigned DLLs in <code>%TEMP%</code> or user directories</li>
+<li>Access from recently created executables to password manager memory</li>
+<li>Processes requesting <code>PROCESS_VM_READ</code> access to KeePass, 1Password, Bitwarden</li>
+<li>Memory access when password database is unlocked (active user session with vault open)</li>
+<li>DLL injection into password manager processes</li>
+<li>Debugger attachment to password manager applications: <code>PROCESS_ALL_ACCESS</code> with <code>DEBUG</code> privileges</li>
+</ul>
+<hr>
+<h3>10. Raw Input Device Access and Monitoring</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Processes accessing raw input</li>
+<li>Event ID 4656 (Handle to object requested) - Device handle requests</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Processes with raw input access</li>
+<li>Event ID 13 (Registry value set) - Raw input device registration</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Device connection events - New input device installations</li>
+<li>HID device events - Human Interface Device activity</li>
+</ul>
+<p><strong>API Calls to Monitor:</strong></p>
+<ul>
+<li><code>RegisterRawInputDevices</code> - Register for raw input</li>
+<li><code>GetRawInputData</code> - Retrieve raw input data</li>
+<li><code>GetRawInputDeviceInfo</code> - Query input device information</li>
+<li>Direct device access via <code>CreateFile</code> on HID devices</li>
+</ul>
+<p><strong>Device Paths:</strong></p>
+<ul>
+<li><code>\\?\HID#*</code> - Human Interface Devices</li>
+<li><code>\\.\keyboard</code> - Keyboard device</li>
+<li>Devices under <code>HKLM\SYSTEM\CurrentControlSet\Enum\HID\</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Processes registering for raw keyboard input</li>
+<li>Direct access to input device handles</li>
+<li>Raw input capture bypassing normal message queue</li>
+<li>Processes accessing multiple input devices</li>
+<li>Unauthorized raw input monitoring</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>RegisterRawInputDevices</code> called by processes in <code>%TEMP%</code>, <code>%APPDATA%</code>, or user directories</li>
+<li>Raw input registration for keyboard devices (usage page 0x01, usage 0x06)</li>
+<li>Processes accessing <code>\\?\HID#*</code> device paths for keyboards</li>
+<li>Direct device file access: <code>CreateFile(&quot;\\.\keyboard&quot;)</code> from non-system processes</li>
+<li>Multiple input devices registered simultaneously by single suspicious process</li>
+<li>Raw input capture from processes without legitimate UI or input handling</li>
+<li>Device access from PowerShell or script interpreters</li>
+<li>Raw input registration during logon or startup for persistence</li>
+<li>Processes capturing raw input and writing to files or network connections</li>
+<li>Service-level processes accessing raw input devices (unusual for services)</li>
+</ul>
+<hr>
+<h1>Input Capture Investigation Checklist</h1>
+<h1>Input Capture Investigation Checklist</h1>
+
+<h2>1. Web Browser Credential Store Access</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4663 for powershell.exe, cmd.exe, python.exe accessing Login Data or logins.json files</label></li>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 11 for browser database copies to %TEMP%, %APPDATA%, network paths</label></li>
+  <li><label><input type="checkbox"> Review file paths: %LOCALAPPDATA%\Google\Chrome\User Data\Default\Login Data</label></li>
+  <li><label><input type="checkbox"> Check Firefox: %APPDATA%\Mozilla\Firefox\Profiles*.default\logins.json, key4.db</label></li>
+  <li><label><input type="checkbox"> Identify SQLite utilities (sqlite3.exe) accessing browser databases</label></li>
+  <li><label><input type="checkbox"> Look for Base64 encoding utilities executed after browser database access</label></li>
+  <li><label><input type="checkbox"> Monitor file transfers of files matching browser database names</label></li>
+</ul>
+
+<h2>2. Windows Credential Manager and Vault</h2>
+<ul>
+  <li><label><input type="checkbox"> Review vaultcmd.exe, cmdkey.exe execution outside administrative contexts</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4663 for file access to %LOCALAPPDATA%\Microsoft\Vault*</label></li>
+  <li><label><input type="checkbox"> Monitor PowerShell using [Windows.Security.Credentials.PasswordVault] class</label></li>
+  <li><label><input type="checkbox"> Identify access to Policy.vpol and *.vcrd files from user-context processes</label></li>
+  <li><label><input type="checkbox"> Look for credential files copied to temporary or network locations</label></li>
+  <li><label><input type="checkbox"> Check registry queries: HKCU\Software\Microsoft\Windows\CurrentVersion\Vault</label></li>
+  <li><label><input type="checkbox"> Review DPAPI master key access from unusual processes</label></li>
+</ul>
+
+<h2>3. Credential Harvesting Tool Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Search for lazagne.exe, <a href="http://LaZagne.py">LaZagne.py</a> execution by name or hash</label></li>
+  <li><label><input type="checkbox"> Check for NirSoft utilities: WebBrowserPassView.exe, ChromePass.exe, PasswordFox.exe, mailpv.exe</label></li>
+  <li><label><input type="checkbox"> Identify credentialfileview.exe, VaultPasswordView.exe usage</label></li>
+  <li><label><input type="checkbox"> Monitor tools executed from %TEMP%, %APPDATA%, Downloads, C:\Users\Public</label></li>
+  <li><label><input type="checkbox"> Look for command lines with "passwords", "credentials", "lazagne", "browsers", "all"</label></li>
+  <li><label><input type="checkbox"> Check for output redirection: &gt; passwords.txt, &gt; creds.txt</label></li>
+  <li><label><input type="checkbox"> Review tools executed via Office apps, browsers, scripting engines</label></li>
+</ul>
+
+<h2>4. Password Manager Database Access</h2>
+<ul>
+  <li><label><input type="checkbox"> Monitor non-password-manager processes reading .kdbx, .psafe3, encrypted database files</label></li>
+  <li><label><input type="checkbox"> Check for database copies to %TEMP%, removable media, network shares</label></li>
+  <li><label><input type="checkbox"> Review file paths: %APPDATA%\KeePass, %LOCALAPPDATA%\1Password, %APPDATA%\Bitwarden\</label></li>
+  <li><label><input type="checkbox"> Identify PowerShell or scripting engines accessing password manager directories</label></li>
+  <li><label><input type="checkbox"> Look for file searches: *.kdbx, *.agilekeychain, *.psafe3</label></li>
+  <li><label><input type="checkbox"> Monitor database files uploaded via HTTP/HTTPS POST requests</label></li>
+  <li><label><input type="checkbox"> Check for password cracking tools (hashcat, john) executed after database access</label></li>
+</ul>
+
+<h2>5. PowerShell Credential Store Access</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4104 for [Windows.Security.Credentials.PasswordVault] usage</label></li>
+  <li><label><input type="checkbox"> Search for SecureString, PasswordVault, or credential .NET classes in script blocks</label></li>
+  <li><label><input type="checkbox"> Check PowerShell reading browser Login Data or logins.json files</label></li>
+  <li><label><input type="checkbox"> Identify Base64-encoded commands decoding to credential access functions</label></li>
+  <li><label><input type="checkbox"> Monitor scripts copying files from %LOCALAPPDATA%\Microsoft\Vault</label></li>
+  <li><label><input type="checkbox"> Look for PowerShell accessing DPAPI for decryption</label></li>
+  <li><label><input type="checkbox"> Review scripts searching for password databases: Get-ChildItem -Include *.kdbx</label></li>
+</ul>
+
+<h2>6. Email Client Credential Cache Access</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4663 for non-email processes accessing .ost, .pst files</label></li>
+  <li><label><input type="checkbox"> Monitor PowerShell reading Outlook profile registry keys</label></li>
+  <li><label><input type="checkbox"> Review Thunderbird logins.json and key4.db file access</label></li>
+  <li><label><input type="checkbox"> Identify registry queries: HKCU\Software\Microsoft\Office*\Outlook\Profiles</label></li>
+  <li><label><input type="checkbox"> Look for file copies of email credential databases</label></li>
+  <li><label><input type="checkbox"> Check Windows Credential Manager entries for email accounts</label></li>
+  <li><label><input type="checkbox"> Monitor network transfers of email credential files</label></li>
+</ul>
+
+<h2>7. Registry Credential Access</h2>
+<ul>
+  <li><label><input type="checkbox"> Review reg.exe querying HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings</label></li>
+  <li><label><input type="checkbox"> Check PowerShell accessing Protected Storage registry paths</label></li>
+  <li><label><input type="checkbox"> Monitor queries for HKCU\Software\Microsoft\Protected Storage System Provider</label></li>
+  <li><label><input type="checkbox"> Identify access to DefaultPassword or AutoAdminLogon in Winlogon keys</label></li>
+  <li><label><input type="checkbox"> Look for registry exports of credential-containing keys</label></li>
+  <li><label><input type="checkbox"> Check remote registry access targeting credential storage locations</label></li>
+  <li><label><input type="checkbox"> Review queries for VPN or wireless network credential registry locations</label></li>
+</ul>
+
+<h2>8. Cloud Credential and Token Theft</h2>
+<ul>
+  <li><label><input type="checkbox"> Monitor PowerShell or scripts reading .aws\credentials, .azure\ directories</label></li>
+  <li><label><input type="checkbox"> Check file copies of credentials, config, TokenCache.dat files</label></li>
+  <li><label><input type="checkbox"> Review access to %USERPROFILE%\.aws, %USERPROFILE%\.azure, %APPDATA%\gcloud\</label></li>
+  <li><label><input type="checkbox"> Identify access to Docker: %USERPROFILE%\.docker\config.json</label></li>
+  <li><label><input type="checkbox"> Look for Kubernetes: %USERPROFILE%\.kube\config access</label></li>
+  <li><label><input type="checkbox"> Check network transfers of cloud credential files</label></li>
+  <li><label><input type="checkbox"> Monitor searches: Get-ChildItem -Recurse -Include credentials,*.json</label></li>
+</ul>
+
+<h2>9. Password Manager Memory Access</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 10 for memory access to KeePass.exe, 1Password.exe, Bitwarden.exe</label></li>
+  <li><label><input type="checkbox"> Check GrantedAccess values: 0x1FFFFF, 0x1010, 0x1438 (full memory read)</label></li>
+  <li><label><input type="checkbox"> Identify powershell.exe, cmd.exe, or unknown processes accessing password manager memory</label></li>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 8 for remote thread creation in password managers</label></li>
+  <li><label><input type="checkbox"> Look for CallTrace through suspicious or unsigned DLLs</label></li>
+  <li><label><input type="checkbox"> Check for DLL injection into password manager processes</label></li>
+  <li><label><input type="checkbox"> Review memory access when password database is unlocked</label></li>
+</ul>
+
+<h2>10. Credential Export and Exfiltration</h2>
+<ul>
+  <li><label><input type="checkbox"> Monitor file creation: passwords.txt, creds.txt, credentials.csv, dump.txt</label></li>
+  <li><label><input type="checkbox"> Check HTTP POST requests containing credential data to external IPs</label></li>
+  <li><label><input type="checkbox"> Review FTP, SCP, SFTP connections following credential harvesting</label></li>
+  <li><label><input type="checkbox"> Identify file uploads to Pastebin, GitHub Gists, file sharing services</label></li>
+  <li><label><input type="checkbox"> Look for PowerShell Invoke-WebRequest with credential data</label></li>
+  <li><label><input type="checkbox"> Check credential files compressed with 7z, zip, rar before transfer</label></li>
+  <li><label><input type="checkbox"> Monitor large outbound data transfers following password store access</label></li>
+  <li><label><input type="checkbox"> Timeline: Credential access → File creation → Compression → Network transfer</label></li>
+</ul>
+</body>
+</html>
