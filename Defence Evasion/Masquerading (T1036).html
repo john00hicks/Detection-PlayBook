@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Masquerading (T1036)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Masquerading: <a href="https://attack.mitre.org/techniques/T1036/">T1036</a></h1>
+<h2>Detection Explanation</h2>
+<p>Masquerading involves adversaries manipulating file names, locations, process names, metadata, or digital signatures to make malicious artifacts appear legitimate. This technique enables attackers to evade detection by blending malicious files and processes with expected system activity, bypassing security controls that rely on name-based detection, and confusing analysts during incident response. Masquerading is commonly used throughout the attack lifecycle for defense evasion and persistence.</p>
+<p>Attackers use masquerading because security tools and analysts often rely on file names, process names, and digital signatures to determine legitimacy. By mimicking legitimate system files (T1036.005), using invalid or fake code signatures (T1036.001), renaming malicious files to match system processes, placing files in expected system directories, or manipulating metadata, adversaries can evade automated detection and create doubt during manual analysis. Common methods include naming malware as system processes like <code>svchost.exe</code> or <code>explorer.exe</code>, placing files in <code>C:\Windows\System32\</code> or similar trusted locations, and using stolen or fake digital certificates.</p>
+<p>Successful masquerading allows adversaries to execute malicious code while appearing as legitimate system processes, persist on systems by mimicking expected files and services, evade signature-based detection through filename variations, confuse incident responders investigating suspicious activity, and bypass application whitelisting controls that rely on file names or locations. The impact includes undetected malware execution, persistent access masquerading as system services, delayed incident response due to confusion with legitimate processes, and compromised forensic analysis when malicious files blend with system files.</p>
+<p>Detection requires monitoring for file and process anomalies such as mismatched names and locations, validating digital signatures, tracking file metadata inconsistencies, identifying unusual parent-child process relationships, and correlating masquerading indicators with other suspicious activities. Organizations should baseline legitimate system file locations and names, implement strict code signing verification, and alert on anomalies such as system process names executing from user directories, invalid signatures on executables, or metadata mismatches.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>System process names executing from non-system locations (T1036.005)</li>
+<li>Invalid or mismatched digital signatures (T1036.001)</li>
+<li>Misspelled system process names (T1036.005)</li>
+<li>Wrong file extensions for executables</li>
+<li>Metadata mismatches (original filename vs actual name)</li>
+<li>Right-to-left override (RTLO) character obfuscation</li>
+<li>Executables in user-writable directories mimicking system files</li>
+<li>Space padding or special characters in filenames</li>
+<li>Process masquerading with unusual parent relationships</li>
+<li>Trusted directory masquerading</li>
+</ol>
+<hr>
+<h3>1. System Process Names Executing from Non-System Locations</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Process execution with location analysis</li>
+<li>Key fields: <code>Image</code>, <code>OriginalFileName</code>, <code>CommandLine</code>, <code>CurrentDirectory</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Process creation with path information</li>
+<li>Key fields: <code>NewProcessName</code>, <code>ProcessCommandLine</code></li>
+</ul>
+<p><strong>Common System Process Names Abused:</strong></p>
+<ul>
+<li><code>svchost.exe</code> - Should only run from <code>C:\Windows\System32\</code></li>
+<li><code>explorer.exe</code> - Should run from <code>C:\Windows\</code></li>
+<li><code>lsass.exe</code> - Should only run from <code>C:\Windows\System32\</code></li>
+<li><code>csrss.exe</code> - Should only run from <code>C:\Windows\System32\</code></li>
+<li><code>winlogon.exe</code> - Should only run from <code>C:\Windows\System32\</code></li>
+<li><code>services.exe</code> - Should only run from <code>C:\Windows\System32\</code></li>
+<li><code>taskmgr.exe</code> - Should run from <code>C:\Windows\System32\</code></li>
+<li><code>rundll32.exe</code> - Should run from <code>C:\Windows\System32\</code></li>
+</ul>
+<p><strong>Legitimate Locations:</strong></p>
+<ul>
+<li><code>C:\Windows\System32\</code> - Primary system binaries</li>
+<li><code>C:\Windows\SysWOW64\</code> - 32-bit binaries on 64-bit systems</li>
+<li><code>C:\Windows\</code> - Core Windows processes (explorer.exe)</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>System process names running from user directories</li>
+<li>Critical system processes from temporary locations</li>
+<li>Multiple instances of single-instance processes</li>
+<li>System process names in non-standard paths</li>
+<li>Processes masquerading as security tools</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>svchost.exe</code> running from <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\</code>, <code>C:\ProgramData\</code></li>
+<li><code>explorer.exe</code> executing from anywhere except <code>C:\Windows\</code></li>
+<li><code>lsass.exe</code> or <code>csrss.exe</code> from any location other than <code>C:\Windows\System32\</code></li>
+<li><code>winlogon.exe</code> running from user-writable directories</li>
+<li>System process names with full path in non-system locations: <code>C:\Users\Public\svchost.exe</code></li>
+<li>Multiple instances of <code>csrss.exe</code> or <code>lsass.exe</code> (should be single instance per session)</li>
+<li>Process names like <code>chrome.exe</code>, <code>firefox.exe</code> from <code>%TEMP%</code> or suspicious directories</li>
+<li><code>taskmgr.exe</code> or <code>notepad.exe</code> launching from downloads or temp folders</li>
+<li>Security tool names (<code>MsMpEng.exe</code>, <code>avp.exe</code>) from non-installation directories</li>
+<li>Critical processes with .exe extension running from directories without .exe files typically</li>
+</ul>
+<hr>
+<h3>2. Invalid or Mismatched Digital Signatures</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Process signature validation</li>
+<li>Event ID 7 (Image loaded) - DLL signature validation</li>
+<li>Key fields: <code>Signed</code>, <code>Signature</code>, <code>SignatureStatus</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Can correlate with signature checks</li>
+<li>Event ID 6416 (New external device) - Device driver signatures</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - Script signature validation</li>
+<li>Unsigned or invalidly signed scripts executing</li>
+</ul>
+<p><strong>Signature Status Values:</strong></p>
+<ul>
+<li><code>Valid</code> - Properly signed and trusted</li>
+<li><code>Invalid</code> - Signature present but verification failed</li>
+<li><code>Expired</code> - Certificate expired</li>
+<li><code>Revoked</code> - Certificate revoked</li>
+<li><code>Untrusted</code> - Certificate chain not trusted</li>
+<li>No signature field - Unsigned</li>
+</ul>
+<p><strong>Tools for Signature Validation:</strong></p>
+<ul>
+<li><code>sigcheck.exe</code> (Sysinternals) - Command-line signature verification</li>
+<li>PowerShell: <code>Get-AuthenticodeSignature</code></li>
+<li>Windows API: <code>WinVerifyTrust</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Executables with invalid signatures masquerading as signed software</li>
+<li>Expired certificates on recently created files</li>
+<li>Self-signed certificates on system-like process names</li>
+<li>Signature mismatches (signer name doesn’t match expected vendor)</li>
+<li>Unsigned executables with system process names</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 1 showing <code>Signed=false</code> for processes named like system files: <code>svchost.exe</code>, <code>explorer.exe</code></li>
+<li>SignatureStatus showing <code>Invalid</code> or <code>Expired</code> on executables pretending to be Microsoft software</li>
+<li>Files named <code>chrome.exe</code>, <code>firefox.exe</code> without valid Google/Mozilla signatures</li>
+<li><code>Signature</code> field showing unexpected companies for well-known software names</li>
+<li>System process names (<code>rundll32.exe</code>, <code>cmd.exe</code>) unsigned running from user directories</li>
+<li>Security tool names (<code>MsMpEng.exe</code>, <code>CylanceSvc.exe</code>) with invalid or no signatures</li>
+<li>Recently created files with expired certificates (timestamp before file creation)</li>
+<li>Self-signed certificates on files masquerading as commercial software</li>
+<li>Signature field populated but SignatureStatus shows verification failure</li>
+<li>Code signing certificates issued to individuals or suspicious organizations for system process names</li>
+</ul>
+<hr>
+<h3>3. Misspelled System Process Names</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Process name analysis</li>
+<li>Event ID 11 (File created) - File creation with name analysis</li>
+<li>Key fields: <code>Image</code>, <code>TargetFilename</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Process creation with typosquatting</li>
+<li>Event ID 4663 (Object access) - File access with similar names</li>
+</ul>
+<p><strong>Common Typosquatting Patterns:</strong></p>
+<ul>
+<li>Character substitution: <code>svch0st.exe</code> (zero for ‘o’), <code>exp1orer.exe</code> (one for ‘l’)</li>
+<li>Character addition: <code>svchostt.exe</code>, <code>exploreer.exe</code></li>
+<li>Character omission: <code>svhost.exe</code>, <code>explrer.exe</code></li>
+<li>Character transposition: <code>scvhost.exe</code>, <code>expolrer.exe</code></li>
+<li>Similar character substitution: <code>svcnost.exe</code> (n for h), <code>exp|orer.exe</code> (pipe for l)</li>
+<li>Case variation: <code>Svchost.exe</code>, <code>EXPLORER.EXE</code> (unusual casing)</li>
+</ul>
+<p><strong>Common Misspellings:</strong></p>
+<ul>
+<li><code>svchost.exe</code> → <code>svch0st.exe</code>, <code>scvhost.exe</code>, <code>svchosl.exe</code>, <code>svchostt.exe</code></li>
+<li><code>explorer.exe</code> → <code>exp1orer.exe</code>, <code>explorar.exe</code>, <code>iexplorer.exe</code></li>
+<li><code>lsass.exe</code> → <code>1sass.exe</code>, <code>isass.exe</code>, <code>lssas.exe</code>, <code>lsaas.exe</code></li>
+<li><code>csrss.exe</code> → <code>cssrs.exe</code>, <code>csrs.exe</code>, <code>csrss32.exe</code></li>
+<li><code>winlogon.exe</code> → <code>winlog0n.exe</code>, <code>winlogin.exe</code>, <code>logonwin.exe</code></li>
+<li><code>taskmgr.exe</code> → <code>taskmang.exe</code>, <code>taskmagr.exe</code>, <code>taskmrg.exe</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Processes with names similar to system processes</li>
+<li>Character substitutions using visually similar characters</li>
+<li>Deliberate misspellings intended to deceive</li>
+<li>Mixed case or unusual casing patterns</li>
+<li>Process names with extra characters</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Process names with zero (<code>0</code>) substituted for letter ‘o’: <code>svch0st.exe</code>, <code>micr0soft.exe</code></li>
+<li>Number ‘1’ or pipe ‘|’ substituted for letter ‘l’: <code>exp1orer.exe</code>, <code>exp|orer.exe</code></li>
+<li>Common system names with extra characters: <code>svchostt.exe</code>, <code>exploreer.exe</code></li>
+<li>Transposed characters: <code>scvhost.exe</code> instead of <code>svchost.exe</code></li>
+<li>Similar characters: <code>rn</code> for <code>m</code>, <code>vv</code> for <code>w</code>: <code>svchosf.exe</code>, <code>vvinlogon.exe</code></li>
+<li>Unicode lookalike characters: Cyrillic or Greek characters resembling Latin</li>
+<li>Unexpected casing: <code>SvcHost.exe</code>, <code>SVCHOST.exe</code> from user directories</li>
+<li>Double extensions attempting concealment: <code>document.pdf.exe</code> appearing as <code>doc.pdf</code></li>
+<li>Extra spaces in names: <code>svchost .exe</code> (space before extension)</li>
+<li>Mixed legitimate and typo: <code>system32svchost.exe</code>, <code>windowsexplorer.exe</code></li>
+</ul>
+<hr>
+<h3>4. Wrong File Extensions for Executables</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Process execution analysis</li>
+<li>Event ID 11 (File created) - File creation with extension mismatches</li>
+<li>Key fields: <code>Image</code>, <code>OriginalFileName</code>, <code>TargetFilename</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Executable extension analysis</li>
+<li>Event ID 4663 (Object access) - File access with extension checks</li>
+</ul>
+<p><strong>Extension Masquerading Patterns:</strong></p>
+<ul>
+<li>Double extensions: <code>invoice.pdf.exe</code>, <code>report.docx.exe</code>, <code>image.jpg.exe</code></li>
+<li>Non-executable extensions for executables: <code>.txt</code>, <code>.pdf</code>, <code>.doc</code> hiding PE files</li>
+<li>Unusual executable extensions: <code>.pif</code>, <code>.scr</code>, <code>.com</code> (less common)</li>
+<li>Missing extensions: Executable without <code>.exe</code> extension</li>
+<li>Spaces before extensions: <code>malware .exe</code>, <code>payload .scr</code></li>
+</ul>
+<p><strong>NTFS Alternate Data Streams (ADS):</strong></p>
+<ul>
+<li>Executables hidden in ADS: <code>file.txt:malware.exe</code></li>
+<li>Zone.Identifier stream manipulation</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Executable files with misleading extensions</li>
+<li>PE files not using standard executable extensions</li>
+<li>Double extension techniques</li>
+<li>Files executed without visible .exe extension</li>
+<li>Hidden executables in alternate data streams</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Files with double extensions executing as processes: <code>document.pdf.exe</code>, <code>invoice.doc.exe</code></li>
+<li>Event ID 1 showing Image path ending in <code>.txt</code>, <code>.pdf</code>, <code>.jpg</code> but executing as process</li>
+<li>OriginalFileName showing <code>.exe</code> but actual filename using document extension</li>
+<li><code>.scr</code> (screensaver), <code>.pif</code>, <code>.com</code> files executing from downloads or user directories</li>
+<li>Processes running from files without extensions in user-writable directories</li>
+<li>Executable content detected in files with document extensions (PE header in .txt file)</li>
+<li>Spaces or special characters before extension: <code>malware .exe</code>, <code>payload..exe</code></li>
+<li>Files with visual confusion: <code>document.pdf .exe</code> (extra space)</li>
+<li>Zone.Identifier alternate data stream missing or manipulated on downloaded executables</li>
+<li>Sysmon Event ID 15 showing executable ADS: <code>file.txt:hidden.exe:$DATA</code></li>
+</ul>
+<hr>
+<h3>5. Metadata Mismatches (Original Filename vs Actual Name)</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Metadata analysis</li>
+<li>Key fields: <code>Image</code>, <code>OriginalFileName</code>, <code>Product</code>, <code>Company</code>, <code>Description</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Process metadata correlation</li>
+</ul>
+<p><strong>File Metadata Fields:</strong></p>
+<ul>
+<li><code>OriginalFileName</code> - Name compiled into executable</li>
+<li><code>InternalName</code> - Internal product name</li>
+<li><code>ProductName</code> - Product description</li>
+<li><code>CompanyName</code> - Company/author</li>
+<li><code>FileDescription</code> - File description</li>
+<li><code>FileVersion</code> - Version number</li>
+</ul>
+<p><strong>Analysis Methods:</strong></p>
+<ul>
+<li>PowerShell: <code>(Get-Item file.exe).VersionInfo</code></li>
+<li>Sysinternals: <code>sigcheck.exe -a file.exe</code></li>
+<li>PE analysis tools: Check PE resource section</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>OriginalFileName not matching actual filename</li>
+<li>System process names with non-Microsoft metadata</li>
+<li>Metadata claiming legitimacy on suspicious files</li>
+<li>Generic or missing metadata on renamed system-named files</li>
+<li>Product/Company mismatches with filename</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Process named <code>svchost.exe</code> with OriginalFileName showing <code>malware.exe</code> or random name</li>
+<li>OriginalFileName field showing <code>payload.exe</code> but file renamed to <code>chrome.exe</code></li>
+<li>CompanyName showing non-Microsoft company for files named as Windows system processes</li>
+<li>System process names (<code>explorer.exe</code>, <code>rundll32.exe</code>) with missing metadata fields</li>
+<li>Generic metadata: ProductName “Application”, Company “User”, on system-named files</li>
+<li>OriginalFileName showing legitimate name but file renamed to confuse: <code>chrome.exe</code> with OriginalFileName <code>legitimate-tool.exe</code></li>
+<li>Metadata showing one product but filename suggesting another: <code>firefox.exe</code> with metadata for different browser</li>
+<li>FileDescription claiming “Windows System File” on files from user directories</li>
+<li>Version information showing <code>0.0.0.0</code> or missing on files masquerading as established software</li>
+<li>Company field showing individual names or unknown entities for system process names</li>
+</ul>
+<hr>
+<h3>6. Right-to-Left Override (RTLO) Character Obfuscation</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File created) - File creation with RTLO detection</li>
+<li>Event ID 1 (Process creation) - Process with RTLO in path</li>
+<li>Key fields: <code>TargetFilename</code>, <code>Image</code> (check for Unicode U+202E)</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4663 (Object access) - File access with RTLO names</li>
+</ul>
+<p><strong>RTLO Technique:</strong></p>
+<ul>
+<li>Unicode character U+202E reverses text display direction</li>
+<li>Makes <code>malwareEXE.txt</code> appear as <code>malwaretxt.EXE</code></li>
+<li>Actual filename: <code>photo[U+202E]gpj.exe</code></li>
+<li>Displayed filename: <code>photoxe.jpg</code> (reversed from RTLO point)</li>
+</ul>
+<p><strong>Common RTLO Patterns:</strong></p>
+<ul>
+<li><code>document[U+202E]fdp.exe</code> displays as <code>documentexe.pdf</code></li>
+<li><code>invoice[U+202E]cod.scr</code> displays as <code>invoicercs.doc</code></li>
+<li><code>report[U+202E]XE.txt</code> displays as <code>reporttxt.EXE</code></li>
+</ul>
+<p><strong>Detection Methods:</strong></p>
+<ul>
+<li>Hex analysis of filenames looking for 0x202E bytes</li>
+<li>Unicode normalization checks</li>
+<li>String analysis for directional override characters</li>
+<li>File listing with raw bytes display</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Files with RTLO characters in names</li>
+<li>Executables appearing as documents via RTLO</li>
+<li>Downloads or email attachments using RTLO</li>
+<li>Files in user directories with RTLO obfuscation</li>
+<li>Execution of RTLO-named files</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Filenames containing Unicode character U+202E (right-to-left override)</li>
+<li>Files appearing as <code>.pdf</code>, <code>.doc</code>, <code>.jpg</code> but actually <code>.exe</code> after RTLO</li>
+<li>Event ID 11 showing TargetFilename with hex bytes <code>E2 80 AE</code> (UTF-8 for U+202E)</li>
+<li>Process execution (Event ID 1) with Image path containing RTLO character</li>
+<li>Email attachments with RTLO in filename attempting to disguise executables</li>
+<li>Downloads from web with RTLO characters making <code>.exe</code> appear as documents</li>
+<li>File created events showing reversed extensions after RTLO point</li>
+<li>Security warnings suppressed due to apparent document extension (actually executable)</li>
+<li>Multiple files with RTLO patterns in same directory (campaign indicator)</li>
+<li>RTLO combined with other masquerading techniques (misspelling, wrong location)</li>
+</ul>
+<hr>
+<h3>7. Executables in User-Writable Directories Mimicking System Files</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Process location analysis</li>
+<li>Event ID 11 (File created) - File creation in suspicious locations</li>
+<li>Key fields: <code>Image</code>, <code>TargetFilename</code>, <code>User</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Process execution locations</li>
+<li>Event ID 4663 (Object access) - File creation and access</li>
+<li>Event ID 4656 (Handle requested) - File handle requests</li>
+</ul>
+<p><strong>User-Writable Directories:</strong></p>
+<ul>
+<li><code>%TEMP%</code> or <code>%TMP%</code> - Temporary directories</li>
+<li><code>%APPDATA%</code> - User application data</li>
+<li><code>%LOCALAPPDATA%</code> - Local application data</li>
+<li><code>C:\Users\Public\</code> - Publicly accessible location</li>
+<li><code>C:\ProgramData\</code> - Program data directory</li>
+<li><code>C:\Users\&lt;username&gt;\Downloads\</code> - Downloads folder</li>
+<li><code>C:\Users\&lt;username&gt;\Desktop\</code> - Desktop folder</li>
+<li><code>C:\Perflogs\</code> - Performance logs (often abused)</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>System process names in user-writable locations</li>
+<li>Executables in temp directories with system names</li>
+<li>Downloads folder containing system-named executables</li>
+<li>Public or ProgramData containing masquerading files</li>
+<li>Recently created files with system process names</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>svchost.exe</code>, <code>explorer.exe</code>, <code>lsass.exe</code> in <code>%TEMP%</code>, <code>%APPDATA%</code>, or <code>C:\Users\Public\</code></li>
+<li>System process names executing from <code>C:\ProgramData\</code> without legitimate installation</li>
+<li><code>rundll32.exe</code>, <code>cmd.exe</code>, <code>powershell.exe</code> copies in user directories</li>
+<li>Downloads folder containing files named as Windows system processes</li>
+<li>Desktop folder with executables named like system files</li>
+<li><code>C:\Perflogs\</code> containing executables (legitimate use is rare)</li>
+<li>Security tool names in user directories without proper installation paths</li>
+<li>Recently created timestamp (within 24-48 hours) on system-named files in user locations</li>
+<li>Multiple system process names in same suspicious directory</li>
+<li>Execution from temporary directories immediately after download or document opening</li>
+</ul>
+<hr>
+<h3>8. Space Padding or Special Characters in Filenames</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File created) - File creation with name analysis</li>
+<li>Event ID 1 (Process creation) - Process with unusual naming</li>
+<li>Key fields: <code>TargetFilename</code>, <code>Image</code> (check for spaces, special characters)</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4663 (Object access) - File operations with special names</li>
+<li>Event ID 4688 (Process creation) - Process names with padding</li>
+</ul>
+<p><strong>Space Padding Techniques:</strong></p>
+<ul>
+<li>Trailing spaces: <code>malware.exe</code> (spaces after extension)</li>
+<li>Leading spaces: <code>svchost.exe</code> (spaces before name)</li>
+<li>Internal spacing: <code>svc host.exe</code> (space within name)</li>
+<li>Multiple spaces: <code>svchost .exe</code> (spaces before extension)</li>
+</ul>
+<p><strong>Special Characters:</strong></p>
+<ul>
+<li>Null bytes: Filename truncation in some tools</li>
+<li>Non-printable characters: ASCII control characters</li>
+<li>Unicode spaces: U+00A0 (non-breaking space), U+2000-U+200B (various spaces)</li>
+<li>Reserved characters in unusual context: <code>svchost&lt;.exe</code>, <code>explorer&gt;.exe</code></li>
+<li>Homoglyph characters: Visually similar but different Unicode</li>
+</ul>
+<p><strong>Detection Challenges:</strong></p>
+<ul>
+<li>Some tools truncate or normalize display</li>
+<li>Console vs. GUI display differences</li>
+<li>Explorer hiding known extensions</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Filenames with excessive whitespace</li>
+<li>Non-printable or unusual Unicode characters</li>
+<li>Files attempting to evade simple string matching</li>
+<li>Executables with visually confusing names</li>
+<li>Name variations exploiting display differences</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>File or process names with trailing spaces: <code>malware.exe</code> (spaces not visible in Explorer)</li>
+<li>Leading spaces in filenames making them sort differently or hide in listings</li>
+<li>Multiple consecutive spaces: <code>svchost .exe</code>, <code>explorer .exe</code></li>
+<li>Unicode non-breaking spaces (U+00A0) instead of regular spaces</li>
+<li>Files with null bytes or control characters in names (hex analysis required)</li>
+<li>Executables with tab characters: <code>svchost\t.exe</code> (tab before extension)</li>
+<li>Mixed visible and zero-width Unicode characters</li>
+<li>Filenames exploiting case sensitivity issues: <code>SvcHost.exe</code> vs <code>svchost.exe</code></li>
+<li>Special characters making files difficult to delete or analyze: <code>svchost?.exe</code></li>
+<li>Homoglyph substitutions: Cyrillic ‘о’ (U+043E) for Latin ‘o’, Greek ‘ο’ (U+03BF)</li>
+</ul>
+<hr>
+<h3>9. Process Masquerading with Unusual Parent Relationships</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Parent-child relationships</li>
+<li>Key fields: <code>Image</code>, <code>ParentImage</code>, <code>ParentCommandLine</code>, <code>IntegrityLevel</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Process hierarchy</li>
+<li>Key fields: <code>NewProcessName</code>, <code>ParentProcessName</code></li>
+</ul>
+<p><strong>Expected Parent-Child Relationships:</strong></p>
+<ul>
+<li><code>services.exe</code> → <code>svchost.exe</code> (legitimate service hosts)</li>
+<li><code>explorer.exe</code> → User applications (desktop apps)</li>
+<li><code>winlogon.exe</code> → <code>userinit.exe</code> → <code>explorer.exe</code> (logon sequence)</li>
+<li><code>svchost.exe</code> → Service processes (depending on service)</li>
+<li><code>wininit.exe</code> → <code>services.exe</code>, <code>lsass.exe</code> (system initialization)</li>
+</ul>
+<p><strong>Suspicious Parent-Child Patterns:</strong></p>
+<ul>
+<li>System processes spawned from user applications</li>
+<li>Multiple instances of single-instance processes</li>
+<li>Wrong parent for critical processes</li>
+<li>Orphaned processes with no parent</li>
+<li>Process injection masquerading indicators</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>System processes with unexpected parents</li>
+<li>Critical processes spawned from Office apps, browsers</li>
+<li>Multiple instances of unique system processes</li>
+<li>Parent process termination but child continues (orphaned)</li>
+<li>Privilege level mismatches between parent and child</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>svchost.exe</code> with parent other than <code>services.exe</code> (indicates masquerading or injection)</li>
+<li><code>lsass.exe</code> with parent other than <code>wininit.exe</code> (malicious process)</li>
+<li><code>csrss.exe</code> spawned after system boot or from non-<code>smss.exe</code> parent</li>
+<li>System process names spawned from <code>winword.exe</code>, <code>excel.exe</code>, <code>outlook.exe</code></li>
+<li><code>explorer.exe</code> with parent other than <code>userinit.exe</code> (session 0) or another <code>explorer.exe</code></li>
+<li>Multiple instances of <code>csrss.exe</code> or <code>lsass.exe</code> (should be one per session/boot)</li>
+<li><code>winlogon.exe</code> spawned during runtime rather than at boot</li>
+<li>System processes with SYSTEM privileges spawned from user-level parents</li>
+<li>ParentImage showing <code>&lt;unknown&gt;</code> or terminated process for critical system processes</li>
+<li>Process chains: <code>winword.exe</code> → <code>svchost.exe</code> → <code>cmd.exe</code> (masquerading + execution)</li>
+</ul>
+<hr>
+<h3>10. Trusted Directory Masquerading</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File created) - Files created in system directories</li>
+<li>Event ID 1 (Process creation) - Execution from system-like paths</li>
+<li>Key fields: <code>TargetFilename</code>, <code>Image</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4663 (Object access) - File creation in protected directories</li>
+<li>Event ID 4656 (Handle requested) - Write access to system directories</li>
+</ul>
+<p><strong>Trusted Directory Patterns:</strong></p>
+<ul>
+<li><code>C:\Windows\System32\</code> - Primary system directory</li>
+<li><code>C:\Windows\SysWOW64\</code> - 32-bit compatibility on 64-bit</li>
+<li><code>C:\Program Files\</code> - Application installations</li>
+<li><code>C:\Program Files (x86)\</code> - 32-bit applications on 64-bit</li>
+</ul>
+<p><strong>Masquerading Directory Techniques:</strong></p>
+<ul>
+<li>Similar names: <code>C:\Windows\System32s\</code>, <code>C:\Windows\System33\</code></li>
+<li>Extra directories: <code>C:\Windows\System32\Config\</code>, <code>C:\Windows\System32\Tasks\</code> (writable)</li>
+<li>Lowercase variations: <code>C:\windows\system32\</code></li>
+<li>Spaces: <code>C:\Windows \System32\</code>, <code>C:\Windows\System32 \</code></li>
+<li>Alternate paths: <code>C:\Windows.old\System32\</code> (Windows upgrade remnant)</li>
+</ul>
+<p><strong>Writable Subdirectories:</strong></p>
+<ul>
+<li><code>C:\Windows\Tasks\</code> - Task files (user-writable)</li>
+<li><code>C:\Windows\System32\Tasks\</code> - Scheduled tasks</li>
+<li><code>C:\Windows\System32\spool\</code> - Print spooler</li>
+<li><code>C:\Windows\Temp\</code> - Temporary files</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Executables in directory names resembling system paths</li>
+<li>Files in writable subdirectories of system directories</li>
+<li>Directory name variations exploiting typos</li>
+<li>Executables claiming to be in System32 but actually elsewhere</li>
+<li>New files created in typically read-only system directories</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Executables in <code>C:\Windows\System33\</code>, <code>C:\Windows\Sys32\</code>, or similar typos</li>
+<li>Files in <code>C:\Windows\System32\Tasks\</code> that are executables (not task definitions)</li>
+<li>Process execution from <code>C:\Windows\</code> subdirectories not typically containing executables</li>
+<li>Newly created executables in <code>C:\Windows\Fonts\</code>, <code>C:\Windows\Help\</code>, or other unusual subdirs</li>
+<li>Files in <code>C:\Program Files\Common Files\</code> without associated installed application</li>
+<li><code>C:\Windows.old\System32\</code> containing recently created executables (post-upgrade hiding)</li>
+<li>Lowercase or mixed-case system paths: <code>c:\windows\system32\</code>, <code>C:\WINDOWS\System32\</code></li>
+<li>Executables in <code>C:\Windows\System32\spool\drivers\</code> without printer driver context</li>
+<li>Files in <code>C:\Windows\Debug\</code>, <code>C:\Windows\Registration\</code> (rarely contain executables)</li>
+<li>Event ID 11 showing file creation in protected system directories by non-system processes</li>
+</ul>
+<hr>
+<h1>Masquerading [T1036] Investigation Checklist</h1>
+<h2>1. System Processes from Wrong Locations</h2>
+<ul>
+  <li><label><input type="checkbox"> Search Event ID 4688/Sysmon Event ID 1 for <code>svchost.exe</code>, <code>lsass.exe</code>, <code>csrss.exe</code> outside <code>C:\Windows\System32\</code></label></li>
+  <li><label><input type="checkbox"> Check for <code>explorer.exe</code> running from anywhere except <code>C:\Windows\</code></label></li>
+  <li><label><input type="checkbox"> Review <code>winlogon.exe</code>, <code>services.exe</code>, <code>taskmgr.exe</code> in <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\</code>, <code>C:\ProgramData\</code></label></li>
+  <li><label><input type="checkbox"> Identify multiple instances of single-instance processes (<code>csrss.exe</code>, <code>lsass.exe</code>)</label></li>
+  <li><label><input type="checkbox"> Look for security tool names (<code>MsMpEng.exe</code>, <code>avp.exe</code>) from non-installation directories</label></li>
+</ul>
+
+<h2>2. Invalid Digital Signatures</h2>
+<ul>
+  <li><label><input type="checkbox"> Filter Sysmon Event ID 1 for <code>Signed=false</code> on system-named processes</label></li>
+  <li><label><input type="checkbox"> Check SignatureStatus for <code>Invalid</code>, <code>Expired</code>, <code>Revoked</code>, <code>Untrusted</code> values</label></li>
+  <li><label><input type="checkbox"> Review signature mismatches (non-Microsoft Company on Windows process names)</label></li>
+  <li><label><input type="checkbox"> Identify unsigned executables named <code>chrome.exe</code>, <code>firefox.exe</code> without vendor signatures</label></li>
+  <li><label><input type="checkbox"> Verify recently created files with expired certificates (timestamp before creation date)</label></li>
+</ul>
+
+<h2>3. Typosquatting &amp; Misspelled Names</h2>
+<ul>
+  <li><label><input type="checkbox"> Search for character substitutions: <code>svch0st.exe</code>, <code>exp1orer.exe</code>, <code>1sass.exe</code>, <code>cssrs.exe</code></label></li>
+  <li><label><input type="checkbox"> Check for extra characters: <code>svchostt.exe</code>, <code>exploreer.exe</code>, <code>lsaas.exe</code></label></li>
+  <li><label><input type="checkbox"> Identify transposed characters: <code>scvhost.exe</code>, <code>expolrer.exe</code>, <code>lssas.exe</code></label></li>
+  <li><label><input type="checkbox"> Look for similar character swaps: <code>exp|orer.exe</code>, <code>svcnost.exe</code>, <code>winlog0n.exe</code></label></li>
+  <li><label><input type="checkbox"> Review unusual casing patterns: <code>SvcHost.exe</code>, <code>EXPLORER.EXE</code> from user directories</label></li>
+</ul>
+
+<h2>4. Wrong File Extensions</h2>
+<ul>
+  <li><label><input type="checkbox"> Search Sysmon Event ID 1/11 for double extensions: <code>invoice.pdf.exe</code>, <code>report.docx.exe</code></label></li>
+  <li><label><input type="checkbox"> Check for executables using <code>.scr</code>, <code>.pif</code>, <code>.com</code> from downloads/user directories</label></li>
+  <li><label><input type="checkbox"> Identify Image paths ending in document extensions (<code>.txt</code>, <code>.pdf</code>, <code>.jpg</code>) but executing</label></li>
+  <li><label><input type="checkbox"> Review OriginalFileName vs actual filename extension mismatches</label></li>
+  <li><label><input type="checkbox"> Look for spaces before extensions: <code>malware .exe</code>, <code>payload..exe</code></label></li>
+</ul>
+
+<h2>5. Metadata Anomalies</h2>
+<ul>
+  <li><label><input type="checkbox"> Compare OriginalFileName to actual filename in Sysmon Event ID 1</label></li>
+  <li><label><input type="checkbox"> Check CompanyName field for non-Microsoft values on system process names</label></li>
+  <li><label><input type="checkbox"> Identify missing or generic metadata: ProductName “Application”, FileVersion <code>0.0.0.0</code></label></li>
+  <li><label><input type="checkbox"> Review FileDescription claiming “Windows System File” on user directory executables</label></li>
+  <li><label><input type="checkbox"> Verify Product/Company mismatches with expected vendors</label></li>
+</ul>
+
+<h2>6. RTLO &amp; Special Character Obfuscation</h2>
+<ul>
+  <li><label><input type="checkbox"> Search Sysmon Event ID 11 filenames for Unicode U+202E (hex bytes <code>E2 80 AE</code>)</label></li>
+  <li><label><input type="checkbox"> Check for executables appearing as documents via RTLO reversal</label></li>
+  <li><label><input type="checkbox"> Review downloads/email attachments with RTLO characters in names</label></li>
+  <li><label><input type="checkbox"> Identify trailing/leading spaces in process names: <code>svchost .exe</code>, <code>explorer.exe</code></label></li>
+  <li><label><input type="checkbox"> Look for homoglyph substitutions: Cyrillic ‘о’ (U+043E) for Latin ‘o’</label></li>
+</ul>
+
+<h2>7. User-Writable Directory Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4688/Sysmon Event ID 1 for system names in <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>%LOCALAPPDATA%</code></label></li>
+  <li><label><input type="checkbox"> Review executables in <code>C:\Users\Public\</code>, <code>C:\Users\&lt;username&gt;\Downloads\</code>, <code>C:\ProgramData\</code></label></li>
+  <li><label><input type="checkbox"> Identify system process names in <code>C:\Perflogs\</code> (rarely legitimate)</label></li>
+  <li><label><input type="checkbox"> Look for recently created (24-48 hours) system-named files in user locations</label></li>
+  <li><label><input type="checkbox"> Check Desktop folder for executables mimicking system files</label></li>
+</ul>
+
+<h2>8. Abnormal Parent-Child Relationships</h2>
+<ul>
+  <li><label><input type="checkbox"> Verify <code>svchost.exe</code> parent is <code>services.exe</code> (not Office apps, browsers)</label></li>
+  <li><label><input type="checkbox"> Check <code>lsass.exe</code> parent is <code>wininit.exe</code> (only one instance at boot)</label></li>
+  <li><label><input type="checkbox"> Identify <code>csrss.exe</code> spawned after boot or from non-<code>smss.exe</code> parent</label></li>
+  <li><label><input type="checkbox"> Review system processes spawned from <code>winword.exe</code>, <code>excel.exe</code>, <code>outlook.exe</code>, <code>chrome.exe</code></label></li>
+  <li><label><input type="checkbox"> Look for orphaned processes: ParentImage <code>&lt;unknown&gt;</code> for critical system processes</label></li>
+</ul>
+
+<h2>9. Trusted Directory Masquerading</h2>
+<ul>
+  <li><label><input type="checkbox"> Search for executables in directory typos: <code>C:\Windows\System33\</code>, <code>C:\Windows\Sys32\</code></label></li>
+  <li><label><input type="checkbox"> Check writable subdirectories: <code>C:\Windows\Tasks\</code>, <code>C:\Windows\System32\Tasks\</code> for executables</label></li>
+  <li><label><input type="checkbox"> Review <code>C:\Windows\Fonts\</code>, <code>C:\Windows\Help\</code>, <code>C:\Windows\Debug\</code> for new executables</label></li>
+  <li><label><input type="checkbox"> Identify files in <code>C:\Windows.old\System32\</code> with recent creation timestamps</label></li>
+  <li><label><input type="checkbox"> Look for lowercase variations: <code>c:\windows\system32\</code>, <code>C:\WINDOWS\System32\</code></label></li>
+</ul>
+
+<h2>10. Correlation &amp; Timeline Analysis</h2>
+<ul>
+  <li><label><input type="checkbox"> Timeline: File creation → Process execution → Network/credential activity</label></li>
+  <li><label><input type="checkbox"> Cross-reference suspicious filenames with threat intelligence (hash lookups)</label></li>
+  <li><label><input type="checkbox"> Correlate multiple masquerading techniques on same host (combined indicators)</label></li>
+  <li><label><input type="checkbox"> Check for lateral movement using masqueraded executables across systems</label></li>
+  <li><label><input type="checkbox"> Review persistence mechanisms (scheduled tasks, services) using masqueraded names</label></li>
+</ul>
+
+</body>
+</html>

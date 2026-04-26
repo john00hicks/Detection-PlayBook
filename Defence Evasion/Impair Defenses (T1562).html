@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Impair Defenses (T1562)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Impair Defenses: <a href="https://attack.mitre.org/techniques/T1562/">T1562</a></h1>
+<h2>Detection Explanation</h2>
+<p>Impair Defenses involves adversaries attempting to disable, modify, or otherwise interfere with security tools, logging systems, monitoring capabilities, and protective controls to evade detection and maintain persistence. This technique is a strong indicator of a sophisticated attacker who understands the defensive capabilities of the target environment and actively works to blind security operations. Impairment of defenses typically occurs after initial compromise and before executing primary objectives such as lateral movement, credential theft, or data exfiltration.</p>
+<p>Attackers impair defenses because security tools and logging systems pose the greatest threat to their operations. By disabling antivirus, EDR agents, Windows Defender, firewalls, logging services, or security monitoring, adversaries reduce their risk of detection and create operational freedom to execute attacks without triggering alerts. Common methods include disabling or modifying security tools (T1562.001), disabling Windows Event Logging (T1562.002), impacting cloud-based security services (T1562.003), disabling or modifying system firewalls (T1562.004), and tampering with indicator blocking or event filtering (T1562.006).</p>
+<p>Successful impairment of defenses creates significant blind spots in security monitoring, allowing attackers to operate undetected for extended periods. This technique dramatically increases attack success rates by neutralizing the defensive capabilities designed to detect and respond to threats. The impact includes undetected malware execution, unlogged attacker activity, disabled endpoint protection, compromised forensic evidence, and delayed incident response due to lack of visibility into attacker actions.</p>
+<p>Detection requires monitoring for changes to security tool configurations, tracking service state changes for protective software, identifying tampering with logging systems, and alerting on unauthorized modifications to firewall rules or security policies. Organizations should establish baselines for security tool configurations, implement tamper protection where available, and correlate defense impairment attempts with other suspicious activities to identify active intrusions.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>Security software disabled or terminated (T1562.001)</li>
+<li>Windows Defender tampered or disabled (T1562.001)</li>
+<li>EDR agent service stopped or removed (T1562.001)</li>
+<li>Windows Event Log service disabled or cleared (T1562.002)</li>
+<li>Firewall rules modified or disabled (T1562.004)</li>
+<li>Security tool process termination attempts</li>
+<li>Registry modifications disabling security features (T1562.001)</li>
+<li>PowerShell commands targeting security tools</li>
+<li>Group Policy changes affecting security settings</li>
+<li>Audit policy modifications reducing logging (T1562.002)</li>
+</ol>
+<hr>
+<h3>1. Security Software Disabled or Terminated</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Commands targeting security software</li>
+<li>Event ID 4697 (Service installed) - Service modifications</li>
+<li>Event ID 7040 (Service startup type changed) - Security service disabled</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 7036 (Service state change) - Security services stopped</li>
+<li>Event ID 7034 (Service terminated unexpectedly) - Antivirus crashes</li>
+<li>Event ID 7045 (Service installed) - Suspicious service replacements</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Commands disabling security tools</li>
+<li>Event ID 13 (Registry value set) - Registry changes disabling protections</li>
+<li>Event ID 12 (Registry object added/deleted) - Security registry key deletion</li>
+</ul>
+<p><strong>Windows Event Logs (Application):</strong></p>
+<ul>
+<li>Antivirus/EDR specific event IDs indicating protection disabled</li>
+<li>Security software error or warning events</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>net stop &quot;Windows Defender&quot;</code> or <code>net stop WinDefend</code></li>
+<li><code>sc config WinDefend start=disabled</code></li>
+<li><code>Stop-Service -Name WinDefend -Force</code></li>
+<li><code>taskkill /F /IM MsMpEng.exe</code> (Defender process)</li>
+<li>Antivirus-specific: <code>net stop &quot;Sophos *&quot;</code>, <code>net stop &quot;Symantec *&quot;</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Security services being stopped or disabled</li>
+<li>Antivirus or EDR process termination</li>
+<li>Service startup type changes from automatic to disabled</li>
+<li>Multiple security tools targeted simultaneously</li>
+<li>Commands executed with administrative privileges</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 7036 showing security services transitioning to stopped state: <code>Windows Defender</code>, <code>SophosAgent</code>, <code>CylanceSvc</code></li>
+<li><code>sc.exe config</code> or <code>net.exe stop</code> commands targeting antivirus service names</li>
+<li>PowerShell <code>Stop-Service</code> commands targeting security tool services</li>
+<li>Event ID 7040 showing security service startup changed from <code>Automatic</code> to <code>Disabled</code></li>
+<li>Multiple security services stopped within short timeframe (5-15 minutes)</li>
+<li><code>taskkill</code> commands targeting security processes: <code>MsMpEng.exe</code>, <code>SenseIR.exe</code>, <code>CylanceUI.exe</code></li>
+<li>Service state changes during off-hours or by non-administrative accounts</li>
+<li>Security software termination immediately following credential dumping or exploitation</li>
+<li>Registry modifications to service start values: <code>HKLM\SYSTEM\CurrentControlSet\Services\&lt;SecurityService&gt;\Start</code> set to 4 (disabled)</li>
+<li>Security tool configuration files deleted or modified</li>
+</ul>
+<hr>
+<h3>2. Windows Defender Tampered or Disabled</h3>
+<p><strong>Windows Event Logs (Microsoft-Windows-Windows Defender/Operational):</strong></p>
+<ul>
+<li>Event ID 5001 (Real-time protection disabled)</li>
+<li>Event ID 5010 (Scanning for malware and unwanted software disabled)</li>
+<li>Event ID 5012 (Antimalware platform will expire soon)</li>
+<li>Event ID 3002 (Real-time protection configuration changed)</li>
+<li>Event ID 5007 (Configuration changed)</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - PowerShell commands disabling Defender</li>
+<li>Commands: <code>Set-MpPreference</code>, <code>Disable-WindowsDefender</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Commands modifying Defender</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Defender modification commands</li>
+<li>Event ID 13 (Registry value set) - Defender registry tampering</li>
+</ul>
+<p><strong>Registry Keys:</strong></p>
+<ul>
+<li><code>HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\DisableAntiSpyware</code> set to 1</li>
+<li><code>HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection\DisableRealtimeMonitoring</code> set to 1</li>
+<li><code>HKLM\SOFTWARE\Microsoft\Windows Defender\Features\TamperProtection</code> set to 0</li>
+</ul>
+<p><strong>PowerShell Commands:</strong></p>
+<ul>
+<li><code>Set-MpPreference -DisableRealtimeMonitoring $true</code></li>
+<li><code>Set-MpPreference -DisableIOAVProtection $true</code></li>
+<li><code>Set-MpPreference -DisableBehaviorMonitoring $true</code></li>
+<li><code>Add-MpPreference -ExclusionPath &quot;C:\&quot;</code></li>
+<li><code>Uninstall-WindowsFeature -Name Windows-Defender</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Real-time protection being disabled</li>
+<li>Behavior monitoring disabled</li>
+<li>Cloud-delivered protection disabled</li>
+<li>Exclusion paths added to entire drives</li>
+<li>Tamper protection modifications</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 5001 (Real-time protection disabled) without legitimate administrative action</li>
+<li>PowerShell <code>Set-MpPreference</code> commands disabling multiple protection features</li>
+<li>Registry value <code>DisableAntiSpyware</code> set to 1 in Policies key</li>
+<li>Exclusion paths added for entire drives: <code>C:\</code>, <code>D:\</code>, or common malware staging locations</li>
+<li>Event ID 5007 showing configuration changes to disable scanning or monitoring</li>
+<li><code>Set-MpPreference -DisableBehaviorMonitoring $true -DisableRealtimeMonitoring $true</code> in single command</li>
+<li>Tamper protection disabled via registry: <code>TamperProtection</code> value set to 0</li>
+<li>Defender exclusions added for suspicious paths: <code>%TEMP%</code>, <code>C:\Users\Public\</code>, <code>C:\ProgramData\</code></li>
+<li>Multiple Defender features disabled simultaneously</li>
+<li>Defender configuration changes during active malware execution or lateral movement</li>
+</ul>
+<hr>
+<h3>3. EDR Agent Service Stopped or Removed</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Commands stopping EDR services</li>
+<li>Event ID 4697 (Service installed) - EDR service modifications</li>
+<li>Event ID 4673 (Sensitive privilege use) - Privileges used to stop services</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 7036 (Service state change) - EDR services stopped</li>
+<li>Event ID 7034 (Service terminated unexpectedly) - EDR crashes</li>
+<li>Event ID 7040 (Service startup type changed) - EDR disabled</li>
+<li>Event ID 7045 (Service installed) - Suspicious service installations</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Commands targeting EDR</li>
+<li>Event ID 6 (Driver loaded) - EDR driver unloaded events</li>
+<li>Event ID 255 (Error) - Sysmon service tampering</li>
+</ul>
+<p><strong>EDR Services to Monitor:</strong></p>
+<ul>
+<li>CrowdStrike: <code>CSFalconService</code>, <code>CSAgent</code></li>
+<li>Carbon Black: <code>CarbonBlack</code>, <code>RepMgr</code></li>
+<li>SentinelOne: <code>SentinelAgent</code>, <code>SentinelStaticEngine</code></li>
+<li>Cylance: <code>CylanceSvc</code>, <code>CylanceUI</code></li>
+<li>Defender ATP: <code>Sense</code>, <code>WdNisSvc</code></li>
+<li>Microsoft Sysmon: <code>Sysmon</code>, <code>Sysmon64</code></li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>sc stop &lt;EDR_Service&gt;</code></li>
+<li><code>net stop &lt;EDR_Service&gt;</code></li>
+<li><code>fltmc unload &lt;EDR_Filter_Driver&gt;</code></li>
+<li><code>sc delete &lt;EDR_Service&gt;</code></li>
+<li>Process termination via Task Manager or <code>taskkill</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>EDR service state changes to stopped</li>
+<li>EDR driver unloading attempts</li>
+<li>EDR process termination</li>
+<li>Service startup type changes from automatic to disabled</li>
+<li>EDR agent uninstallation attempts</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 7036 showing EDR services stopping: <code>CSFalconService</code>, <code>SentinelAgent</code>, <code>CarbonBlack</code></li>
+<li>Commands targeting EDR services: <code>sc stop CSFalconService</code>, <code>net stop CylanceSvc</code></li>
+<li>EDR filter driver unloading: <code>fltmc unload SysmonDrv</code>, <code>fltmc unload CbFilter</code></li>
+<li>Event ID 7040 showing EDR service startup changed to <code>Disabled</code></li>
+<li>Multiple EDR components stopped simultaneously (service + driver + process)</li>
+<li>EDR agent uninstallation commands or MSI removal operations</li>
+<li><code>taskkill</code> targeting EDR processes: <code>taskkill /F /IM CSFalconService.exe</code></li>
+<li>Registry modifications to EDR service configurations</li>
+<li>EDR service crashes (Event ID 7034) during suspicious activity</li>
+<li>Sysmon Event ID 255 errors indicating Sysmon service tampering or unloading</li>
+</ul>
+<hr>
+<h3>4. Windows Event Log Service Disabled or Cleared</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 1102 (Audit log cleared) - Event logs manually cleared</li>
+<li>Event ID 4688 (Process creation) - Commands clearing or disabling logs</li>
+<li>Event ID 4719 (System audit policy changed) - Audit policy modifications</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 7036 (Service state change) - Event Log service stopped</li>
+<li>Event ID 7040 (Service startup type changed) - Event Log service disabled</li>
+<li>Event ID 104 (Log cleared) - Individual log channels cleared</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Log clearing commands</li>
+<li>Event ID 13 (Registry value set) - Event log registry tampering</li>
+<li>Event ID 12 (Registry object added/deleted) - Event log configuration changes</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - PowerShell log clearing commands</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>wevtutil cl Security</code></li>
+<li><code>wevtutil cl System</code></li>
+<li><code>wevtutil cl &quot;Microsoft-Windows-Sysmon/Operational&quot;</code></li>
+<li><code>Clear-EventLog -LogName Security</code></li>
+<li><code>Get-EventLog -LogName * | Clear-EventLog</code></li>
+<li><code>net stop eventlog</code></li>
+<li><code>sc config eventlog start=disabled</code></li>
+</ul>
+<p><strong>Registry Keys:</strong></p>
+<ul>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Security\MaxSize</code> (size manipulation)</li>
+<li><code>HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Channels\*\Enabled</code> set to 0</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Security, System, or Sysmon logs being cleared</li>
+<li>Event Log service being stopped or disabled</li>
+<li>Audit policies being modified to reduce logging</li>
+<li>Log file size limits being reduced</li>
+<li>Event channels being disabled</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 1102 (Security log cleared) without authorized change management</li>
+<li>Multiple logs cleared in sequence: Security, System, Application, Sysmon</li>
+<li><code>wevtutil cl</code> commands targeting critical log channels</li>
+<li>PowerShell <code>Clear-EventLog</code> commands clearing Security or System logs</li>
+<li>Event Log service stopped (Event ID 7036) during active intrusion</li>
+<li>Event ID 104 showing individual log channels cleared</li>
+<li><code>sc config eventlog start=disabled</code> attempting to prevent log service restart</li>
+<li>Log clearing immediately following credential dumping, lateral movement, or exploitation</li>
+<li>Registry modifications disabling event channels: <code>Enabled</code> value set to 0</li>
+<li>Audit policy changes (Event ID 4719) reducing success/failure logging</li>
+</ul>
+<hr>
+<h3>5. Firewall Rules Modified or Disabled</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Commands modifying firewall</li>
+<li>Event ID 4946 (Windows Firewall exception list change) - Rule additions</li>
+<li>Event ID 4947 (Windows Firewall rule modified)</li>
+<li>Event ID 4948 (Windows Firewall exception list change deleted)</li>
+<li>Event ID 4950 (Windows Firewall setting changed)</li>
+<li>Event ID 4954 (Windows Firewall Group Policy settings changed)</li>
+</ul>
+<p><strong>Windows Event Logs (Microsoft-Windows-Windows Firewall With Advanced Security/Firewall):</strong></p>
+<ul>
+<li>Event ID 2003 (Windows Firewall state changed to disabled)</li>
+<li>Event ID 2004 (Firewall rule added)</li>
+<li>Event ID 2005 (Firewall rule modified)</li>
+<li>Event ID 2006 (Firewall rule deleted)</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Firewall modification commands</li>
+<li>Event ID 13 (Registry value set) - Firewall registry changes</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - PowerShell firewall commands</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>netsh advfirewall set allprofiles state off</code></li>
+<li><code>netsh advfirewall firewall add rule name=&quot;Allow All&quot; dir=in action=allow</code></li>
+<li><code>Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False</code></li>
+<li><code>New-NetFirewallRule -DisplayName &quot;Malware&quot; -Direction Inbound -Action Allow</code></li>
+<li><code>netsh firewall set opmode mode=disable</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Firewall being completely disabled</li>
+<li>Permissive rules allowing all inbound traffic</li>
+<li>Rules allowing specific malware ports or services</li>
+<li>Firewall profile state changes</li>
+<li>Group Policy firewall modifications</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 2003 (Firewall disabled) for Domain, Private, or Public profiles</li>
+<li><code>netsh advfirewall set allprofiles state off</code> disabling all firewall profiles</li>
+<li>PowerShell <code>Set-NetFirewallProfile -Enabled False</code> commands</li>
+<li>Event ID 4946/2004 showing rules allowing all inbound traffic on all ports</li>
+<li>Firewall rules added for suspicious ports: 4444, 31337, 8080 (common C2 ports)</li>
+<li>Rule names suggesting malware: “Allow All”, “Backdoor”, “Update”, generic names</li>
+<li>Firewall rules allowing inbound traffic to <code>cmd.exe</code>, <code>powershell.exe</code>, or suspicious executables</li>
+<li>Event ID 4950 showing firewall settings changed to less restrictive configurations</li>
+<li>Multiple firewall rules added in rapid succession</li>
+<li>Firewall modifications during active lateral movement or C2 communication</li>
+</ul>
+<hr>
+<h3>6. Security Tool Process Termination Attempts</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - <code>taskkill</code> or process termination tools</li>
+<li>Event ID 4689 (Process exited) - Security processes terminating</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Process termination commands</li>
+<li>Event ID 5 (Process terminated) - Security tool processes ending</li>
+<li>Event ID 10 (ProcessAccess) - Handle requests to security processes</li>
+</ul>
+<p><strong>Windows Event Logs (Application):</strong></p>
+<ul>
+<li>Application error events for security software</li>
+<li>Crash reports for security tools</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>taskkill /F /IM MsMpEng.exe</code> (Defender)</li>
+<li><code>taskkill /F /IM csfalconservice.exe</code> (CrowdStrike)</li>
+<li><code>taskkill /F /IM SentinelAgent.exe</code> (SentinelOne)</li>
+<li><code>Stop-Process -Name &quot;SecurityProcess&quot; -Force</code></li>
+<li><code>wmic process where name=&quot;antivirus.exe&quot; delete</code></li>
+</ul>
+<p><strong>Security Processes to Monitor:</strong></p>
+<ul>
+<li>Windows Defender: <code>MsMpEng.exe</code>, <code>NisSrv.exe</code>, <code>SecurityHealthService.exe</code></li>
+<li>CrowdStrike: <code>CSFalconService.exe</code>, <code>CSFalconContainer.exe</code></li>
+<li>Carbon Black: <code>cb.exe</code>, <code>RepMgr.exe</code></li>
+<li>SentinelOne: <code>SentinelAgent.exe</code>, <code>SentinelServiceHost.exe</code></li>
+<li>Symantec: <code>ccSvcHst.exe</code>, <code>SymCorpUI.exe</code></li>
+<li>McAfee: <code>McShield.exe</code>, <code>mfemms.exe</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Process termination commands targeting security software</li>
+<li>Forceful process kills (<code>/F</code> parameter)</li>
+<li>Multiple security processes terminated simultaneously</li>
+<li>Process access attempts to security tools for termination</li>
+<li>Termination attempts using administrative privileges</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>taskkill /F /IM</code> targeting security process names</li>
+<li>PowerShell <code>Stop-Process -Force</code> commands terminating antivirus or EDR</li>
+<li>WMI process deletion: <code>wmic process where name=&quot;MsMpEng.exe&quot; delete</code></li>
+<li>Sysmon Event ID 10 showing process handle requests with TERMINATE access to security tools</li>
+<li>Multiple security processes terminated within 5-minute window</li>
+<li>Process termination from unexpected parent processes: Office apps, browsers, scripts</li>
+<li>Event ID 5 showing security tool processes terminating unexpectedly</li>
+<li>Process termination immediately before malware execution or lateral movement</li>
+<li>Repeated termination attempts indicating persistence mechanisms targeting security tools</li>
+<li>Security process crashes correlated with attacker activity</li>
+</ul>
+<hr>
+<h3>7. Registry Modifications Disabling Security Features</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 12 (Registry object added/deleted) - Security registry key deletion</li>
+<li>Event ID 13 (Registry value set) - Security settings modified</li>
+<li>Event ID 14 (Registry object renamed) - Security key renaming</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4657 (Registry value modification) - Security registry changes</li>
+<li>Event ID 4688 (Process creation) - <code>reg.exe</code> commands modifying security</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - PowerShell registry modifications</li>
+</ul>
+<p><strong>Critical Registry Keys:</strong></p>
+<ul>
+<li>Windows Defender:
+<ul>
+<li><code>HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\DisableAntiSpyware</code> = 1</li>
+<li><code>HKLM\SOFTWARE\Microsoft\Windows Defender\Features\TamperProtection</code> = 0</li>
+</ul>
+</li>
+<li>UAC:
+<ul>
+<li><code>HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\EnableLUA</code> = 0</li>
+<li><code>HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\ConsentPromptBehaviorAdmin</code> = 0</li>
+</ul>
+</li>
+<li>Windows Firewall:
+<ul>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile\EnableFirewall</code> = 0</li>
+</ul>
+</li>
+<li>Audit Policy:
+<ul>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Control\Lsa\AuditBaseObjects</code> = 0</li>
+</ul>
+</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>reg add &quot;HKLM\SOFTWARE\Policies\Microsoft\Windows Defender&quot; /v DisableAntiSpyware /t REG_DWORD /d 1 /f</code></li>
+<li><code>reg add &quot;HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System&quot; /v EnableLUA /t REG_DWORD /d 0 /f</code></li>
+<li>PowerShell: <code>Set-ItemProperty -Path &quot;HKLM:\SOFTWARE\...&quot; -Name DisableAntiSpyware -Value 1</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Registry keys controlling security tool behavior</li>
+<li>UAC settings being weakened</li>
+<li>Audit and logging settings being reduced</li>
+<li>Firewall registry modifications</li>
+<li>Tamper protection being disabled</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>DisableAntiSpyware</code> registry value set to 1 (disables Windows Defender)</li>
+<li><code>EnableLUA</code> set to 0 (disables User Account Control)</li>
+<li><code>TamperProtection</code> set to 0 (allows Defender tampering)</li>
+<li>Firewall <code>EnableFirewall</code> values set to 0 for all profiles</li>
+<li><code>ConsentPromptBehaviorAdmin</code> set to 0 (no UAC prompts for administrators)</li>
+<li><code>reg.exe</code> commands modifying security-related registry keys</li>
+<li>PowerShell <code>Set-ItemProperty</code> modifying Defender, UAC, or firewall keys</li>
+<li>Multiple security registry keys modified in sequence</li>
+<li>Registry modifications immediately preceding malware execution</li>
+<li>Changes to audit policy registry keys reducing logging verbosity</li>
+</ul>
+<hr>
+<h3>8. PowerShell Commands Targeting Security Tools</h3>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - Full command content</li>
+<li>Event ID 4103 (Module logging) - Cmdlet execution</li>
+<li>Event ID 4105 (Script start) - Script execution</li>
+<li>Event ID 4106 (Script stop) - Script termination</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - PowerShell execution</li>
+<li>Event ID 4672 (Special privileges assigned) - Elevated PowerShell sessions</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - PowerShell with suspicious parameters</li>
+<li>Event ID 3 (Network connection) - PowerShell downloading disabler scripts</li>
+</ul>
+<p><strong>PowerShell Commands Targeting Security:</strong></p>
+<ul>
+<li><code>Set-MpPreference -DisableRealtimeMonitoring $true</code></li>
+<li><code>Stop-Service -Name WinDefend -Force</code></li>
+<li><code>Uninstall-WindowsFeature -Name Windows-Defender</code></li>
+<li><code>Get-Service *defender* | Stop-Service -Force</code></li>
+<li><code>Set-NetFirewallProfile -Enabled False</code></li>
+<li><code>Disable-WindowsOptionalFeature -Online -FeatureName Windows-Defender</code></li>
+<li><code>Add-MpPreference -ExclusionPath &quot;C:\&quot;</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>PowerShell cmdlets disabling security features</li>
+<li>Service manipulation targeting security tools</li>
+<li>Registry modifications via PowerShell</li>
+<li>Exclusion additions for broad paths</li>
+<li>Multiple security features targeted in single script</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>Set-MpPreference</code> with multiple disabling parameters in single command</li>
+<li>PowerShell <code>Stop-Service</code> targeting security service names</li>
+<li><code>Get-Service</code> filtering for security tools followed by <code>Stop-Service</code></li>
+<li><code>Uninstall-WindowsFeature -Name Windows-Defender</code> removing Defender entirely</li>
+<li>Base64-encoded PowerShell commands decoding to security tool disabling</li>
+<li><code>Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False</code></li>
+<li>PowerShell adding broad exclusions: <code>Add-MpPreference -ExclusionPath &quot;C:\&quot;, &quot;D:\&quot;</code></li>
+<li>Scripts combining multiple security impairment techniques</li>
+<li>PowerShell downloading and executing security disabling scripts from external sources</li>
+<li><code>-EncodedCommand</code> or <code>-WindowStyle Hidden</code> parameters with security tool targeting</li>
+</ul>
+<hr>
+<h3>9. Group Policy Changes Affecting Security Settings</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4719 (System audit policy changed) - Audit policy modifications</li>
+<li>Event ID 4739 (Domain policy changed) - Domain-wide policy changes</li>
+<li>Event ID 4954 (Windows Firewall Group Policy changed)</li>
+<li>Event ID 5136 (Directory service object modified) - GPO modifications in AD</li>
+<li>Event ID 5137 (Directory service object created) - New GPO creation</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 1500 (Group Policy processing) - GPO application</li>
+<li>Event ID 1501 (Group Policy error) - GPO processing failures</li>
+</ul>
+<p><strong>Active Directory Logs (on Domain Controllers):</strong></p>
+<ul>
+<li>GPO modification events in AD</li>
+<li>SYSVOL changes to GPO files</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - GPO modification scripts</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Group Policy changes affecting security tools</li>
+<li>Audit policy reductions via GPO</li>
+<li>Firewall settings modified via Group Policy</li>
+<li>AppLocker or application control policy changes</li>
+<li>Security baseline GPO modifications</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 4719 showing audit policy success/failure logging reduced or disabled</li>
+<li>GPO modifications disabling Windows Defender across domain</li>
+<li>Event ID 4954 showing firewall Group Policy changes to permissive settings</li>
+<li>Event ID 5136 showing GPO object modifications in AD: <code>CN=Policies,CN=System,DC=...</code></li>
+<li>New GPOs created (Event ID 5137) with security-impacting settings</li>
+<li>GPO changes disabling User Account Control domain-wide</li>
+<li>Audit policy GPO modifications reducing object access, process tracking, or logon event logging</li>
+<li>PowerShell scripts using <code>Set-GPRegistryValue</code> to disable security features</li>
+<li>GPO links modified to apply permissive security policies to sensitive OUs</li>
+<li>SYSVOL changes to <code>Registry.pol</code> files containing security setting reductions</li>
+</ul>
+<hr>
+<h3>10. Audit Policy Modifications Reducing Logging</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4719 (System audit policy changed) - Critical audit policy indicator</li>
+<li>Event ID 4902 (Per-user audit policy table created)</li>
+<li>Event ID 4906 (CrashOnAuditFail value changed)</li>
+<li>Event ID 4912 (Per-User Audit Policy changed)</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 1102 (Audit log cleared) - Often follows audit reduction</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>auditpol /set /category:&quot;Logon/Logoff&quot; /success:disable /failure:disable</code></li>
+<li><code>auditpol /clear /y</code> (clears all audit settings)</li>
+<li><code>auditpol /set /subcategory:&quot;Process Creation&quot; /success:disable</code></li>
+<li><code>reg add HKLM\System\CurrentControlSet\Control\Lsa /v AuditBaseObjects /t REG_DWORD /d 0</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - <code>auditpol.exe</code> execution</li>
+<li>Event ID 13 (Registry value set) - Audit registry modifications</li>
+</ul>
+<p><strong>Audit Categories Commonly Targeted:</strong></p>
+<ul>
+<li>Logon/Logoff events</li>
+<li>Process Tracking (process creation)</li>
+<li>Object Access (file/registry access)</li>
+<li>Privilege Use</li>
+<li>Account Logon events</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Audit policies being disabled or reduced</li>
+<li>Success and/or failure logging disabled</li>
+<li>Critical security event categories disabled</li>
+<li>Registry modifications affecting audit behavior</li>
+<li>Audit policy cleared entirely</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 4719 showing audit policy subcategory changed to “No Auditing”</li>
+<li><code>auditpol /set</code> commands disabling Process Creation (subcategory <code>{0CCE922B-69AE-11D9-BED3-505054503030}</code>)</li>
+<li>Audit policy changes disabling Logon/Logoff events during active intrusion</li>
+<li><code>auditpol /clear</code> clearing all audit configurations</li>
+<li>Multiple audit subcategories disabled in sequence</li>
+<li>Audit policy modifications immediately following credential dumping or lateral movement</li>
+<li>Event ID 4719 showing both success and failure auditing disabled for critical categories</li>
+<li>Registry modifications to <code>HKLM\System\CurrentControlSet\Control\Lsa\AuditBaseObjects</code> set to 0</li>
+<li>Audit policy changes via Group Policy affecting multiple systems simultaneously</li>
+<li>Per-user audit policies (Event ID 4912) configured to reduce logging for specific accounts</li>
+</ul>
+<hr>
+<h1>Impair Defenses Investigation Checklist</h1>
+<body>
+  <h2>1. Security Software Disabled/Terminated</h2>
+  <ul>
+    <li><label><input type="checkbox"> Review Event ID 7036 for security services stopping: Windows Defender, SophosAgent, CylanceSvc</label></li>
+    <li><label><input type="checkbox"> Check sc.exe config or net.exe stop commands targeting antivirus services</label></li>
+    <li><label><input type="checkbox"> Monitor PowerShell Stop-Service commands targeting security tools</label></li>
+    <li><label><input type="checkbox"> Identify Event ID 7040 for startup changes from Automatic to Disabled</label></li>
+    <li><label><input type="checkbox"> Look for multiple security services stopped within 5-15 minutes</label></li>
+    <li><label><input type="checkbox"> Check taskkill commands targeting: MsMpEng.exe, SenseIR.exe, CylanceUI.exe</label></li>
+    <li><label><input type="checkbox"> Review service state changes during off-hours or by non-administrative accounts</label></li>
+    <li><label><input type="checkbox"> Monitor registry modifications to service Start values (set to 4 - disabled)</label></li>
+  </ul>
+
+  <h2>2. Windows Defender Tampered/Disabled</h2>
+  <ul>
+    <li><label><input type="checkbox"> Check Event ID 5001 (Real-time protection disabled) without legitimate admin action</label></li>
+    <li><label><input type="checkbox"> Review PowerShell Set-MpPreference commands disabling multiple features</label></li>
+    <li><label><input type="checkbox"> Monitor registry: DisableAntiSpyware set to 1 in Policies key</label></li>
+    <li><label><input type="checkbox"> Identify exclusion paths for entire drives: C:, D:, or staging locations</label></li>
+    <li><label><input type="checkbox"> Look for Event ID 5007 showing configuration changes to disable scanning</label></li>
+    <li><label><input type="checkbox"> Check TamperProtection registry value set to 0</label></li>
+    <li><label><input type="checkbox"> Review exclusions for suspicious paths: %TEMP%, C:\Users\Public, C:\ProgramData\</label></li>
+    <li><label><input type="checkbox"> Monitor multiple Defender features disabled simultaneously</label></li>
+  </ul>
+
+  <h2>3. EDR Agent Service Stopped/Removed</h2>
+  <ul>
+    <li><label><input type="checkbox"> Review Event ID 7036 for EDR services stopping: CSFalconService, SentinelAgent, CarbonBlack</label></li>
+    <li><label><input type="checkbox"> Check commands: sc stop CSFalconService, net stop CylanceSvc</label></li>
+    <li><label><input type="checkbox"> Monitor EDR filter driver unloading: fltmc unload SysmonDrv, fltmc unload CbFilter</label></li>
+    <li><label><input type="checkbox"> Identify Event ID 7040 for EDR startup changed to Disabled</label></li>
+    <li><label><input type="checkbox"> Look for multiple EDR components stopped (service + driver + process)</label></li>
+    <li><label><input type="checkbox"> Check taskkill targeting: taskkill /F /IM CSFalconService.exe</label></li>
+    <li><label><input type="checkbox"> Review Sysmon Event ID 255 errors indicating Sysmon tampering</label></li>
+    <li><label><input type="checkbox"> Monitor EDR crashes (Event ID 7034) during suspicious activity</label></li>
+  </ul>
+
+  <h2>4. Event Log Service Disabled/Cleared</h2>
+  <ul>
+    <li><label><input type="checkbox"> Review Event ID 1102 (Security log cleared) without authorized change management</label></li>
+    <li><label><input type="checkbox"> Check multiple logs cleared in sequence: Security, System, Application, Sysmon</label></li>
+    <li><label><input type="checkbox"> Monitor wevtutil cl commands targeting critical log channels</label></li>
+    <li><label><input type="checkbox"> Identify PowerShell Clear-EventLog commands clearing Security/System logs</label></li>
+    <li><label><input type="checkbox"> Look for Event Log service stopped (Event ID 7036)</label></li>
+    <li><label><input type="checkbox"> Check Event ID 104 showing individual log channels cleared</label></li>
+    <li><label><input type="checkbox"> Review sc config eventlog start=disabled attempts</label></li>
+    <li><label><input type="checkbox"> Monitor log clearing following credential dumping or lateral movement</label></li>
+  </ul>
+
+  <h2>5. Firewall Rules Modified/Disabled</h2>
+  <ul>
+    <li><label><input type="checkbox"> Review Event ID 2003 (Firewall disabled) for Domain, Private, or Public profiles</label></li>
+    <li><label><input type="checkbox"> Check netsh advfirewall set allprofiles state off commands</label></li>
+    <li><label><input type="checkbox"> Monitor PowerShell Set-NetFirewallProfile -Enabled False</label></li>
+    <li><label><input type="checkbox"> Identify Event ID 4946/2004 showing rules allowing all inbound traffic</label></li>
+    <li><label><input type="checkbox"> Look for firewall rules for suspicious ports: 4444, 31337, 8080</label></li>
+    <li><label><input type="checkbox"> Check rule names: "Allow All", "Backdoor", "Update", generic names</label></li>
+    <li><label><input type="checkbox"> Review rules allowing inbound to cmd.exe, powershell.exe, suspicious executables</label></li>
+    <li><label><input type="checkbox"> Monitor multiple firewall rules added in rapid succession</label></li>
+  </ul>
+
+  <h2>6. Security Process Termination</h2>
+  <ul>
+    <li><label><input type="checkbox"> Check taskkill /F /IM targeting security process names</label></li>
+    <li><label><input type="checkbox"> Review PowerShell Stop-Process -Force terminating antivirus or EDR</label></li>
+    <li><label><input type="checkbox"> Monitor WMI process deletion: wmic process where name="MsMpEng.exe" delete</label></li>
+    <li><label><input type="checkbox"> Identify Sysmon Event ID 10 with TERMINATE access to security tools</label></li>
+    <li><label><input type="checkbox"> Look for multiple security processes terminated within 5-minute window</label></li>
+    <li><label><input type="checkbox"> Check process termination from unexpected parents: Office apps, browsers, scripts</label></li>
+    <li><label><input type="checkbox"> Review Event ID 5 showing security processes terminating unexpectedly</label></li>
+    <li><label><input type="checkbox"> Monitor termination immediately before malware execution or lateral movement</label></li>
+  </ul>
+
+  <h2>7. Security Registry Modifications</h2>
+  <ul>
+    <li><label><input type="checkbox"> Check DisableAntiSpyware registry value set to 1 (disables Defender)</label></li>
+    <li><label><input type="checkbox"> Review EnableLUA set to 0 (disables User Account Control)</label></li>
+    <li><label><input type="checkbox"> Monitor TamperProtection set to 0 (allows Defender tampering)</label></li>
+    <li><label><input type="checkbox"> Identify Firewall EnableFirewall values set to 0 for all profiles</label></li>
+    <li><label><input type="checkbox"> Look for ConsentPromptBehaviorAdmin set to 0 (no UAC prompts)</label></li>
+    <li><label><input type="checkbox"> Check reg.exe commands modifying security-related registry keys</label></li>
+    <li><label><input type="checkbox"> Review PowerShell Set-ItemProperty modifying Defender, UAC, firewall keys</label></li>
+    <li><label><input type="checkbox"> Monitor multiple security registry keys modified in sequence</label></li>
+  </ul>
+
+  <h2>8. PowerShell Security Tool Targeting</h2>
+  <ul>
+    <li><label><input type="checkbox"> Review Set-MpPreference with multiple disabling parameters in single command</label></li>
+    <li><label><input type="checkbox"> Check PowerShell Stop-Service targeting security service names</label></li>
+    <li><label><input type="checkbox"> Monitor Get-Service filtering security tools followed by Stop-Service</label></li>
+    <li><label><input type="checkbox"> Identify Uninstall-WindowsFeature -Name Windows-Defender</label></li>
+    <li><label><input type="checkbox"> Look for Base64-encoded PowerShell decoding to security disabling</label></li>
+    <li><label><input type="checkbox"> Check Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False</label></li>
+    <li><label><input type="checkbox"> Review Add-MpPreference with broad exclusions: C:, D:\</label></li>
+    <li><label><input type="checkbox"> Monitor -EncodedCommand or -WindowStyle Hidden with security targeting</label></li>
+  </ul>
+
+  <h2>9. Group Policy Security Changes</h2>
+  <ul>
+    <li><label><input type="checkbox"> Review Event ID 4719 showing audit policy success/failure logging reduced</label></li>
+    <li><label><input type="checkbox"> Check GPO modifications disabling Windows Defender across domain</label></li>
+    <li><label><input type="checkbox"> Monitor Event ID 4954 for firewall Group Policy changes</label></li>
+    <li><label><input type="checkbox"> Identify Event ID 5136 showing GPO modifications: CN=Policies,CN=System,DC=…</label></li>
+    <li><label><input type="checkbox"> Look for new GPOs (Event ID 5137) with security-impacting settings</label></li>
+    <li><label><input type="checkbox"> Check GPO changes disabling User Account Control domain-wide</label></li>
+    <li><label><input type="checkbox"> Review audit policy GPO modifications reducing logging</label></li>
+    <li><label><input type="checkbox"> Monitor PowerShell Set-GPRegistryValue disabling security features</label></li>
+  </ul>
+
+  <h2>10. Audit Policy Modifications</h2>
+  <ul>
+    <li><label><input type="checkbox"> Review Event ID 4719 showing audit subcategory changed to "No Auditing"</label></li>
+    <li><label><input type="checkbox"> Check auditpol /set commands disabling Process Creation events</label></li>
+    <li><label><input type="checkbox"> Monitor audit policy changes disabling Logon/Logoff during intrusion</label></li>
+    <li><label><input type="checkbox"> Identify auditpol /clear clearing all audit configurations</label></li>
+    <li><label><input type="checkbox"> Look for multiple audit subcategories disabled in sequence</label></li>
+    <li><label><input type="checkbox"> Check audit modifications following credential dumping or lateral movement</label></li>
+    <li><label><input type="checkbox"> Review Event ID 4719 with both success and failure auditing disabled</label></li>
+    <li><label><input type="checkbox"> Monitor registry: HKLM\System\CurrentControlSet\Control\Lsa\AuditBaseObjects set to 0</label></li>
+  </ul>
+</body>
+
+</body>
+</html>

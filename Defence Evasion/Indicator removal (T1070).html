@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Indicator removal (T1070)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Indicator Removal: <a href="https://attack.mitre.org/techniques/T1070/">T1070</a></h1>
+<h2>Detection Explanation</h2>
+<p>Indicator Removal involves adversaries attempting to cover their tracks by deleting, clearing, or manipulating evidence of their activities on compromised systems. This technique is a clear indicator that an adversary is aware of forensic and detection capabilities and is actively working to evade investigation, hinder incident response, and remove artifacts that could reveal their presence, methods, or objectives. Indicator removal typically occurs throughout an intrusion but becomes particularly prevalent before exfiltration or when adversaries believe detection is imminent.</p>
+<p>Attackers remove indicators because forensic artifacts, logs, and file timestamps provide critical evidence for incident response, threat hunting, and attribution. By clearing Windows Event Logs (T1070.001), clearing Linux or Mac logs (T1070.002), clearing command history (T1070.003), deleting files (T1070.004), modifying timestamps (T1070.006), or clearing network configuration (T1070.005), adversaries aim to eliminate evidence of compromise, complicate forensic analysis, and reduce the likelihood of detection. This technique demonstrates sophistication and intent to maintain long-term access or hide the full scope of compromise.</p>
+<p>Successful indicator removal significantly hinders incident response by destroying evidence needed to understand attack timelines, identify compromised systems, determine data accessed or stolen, and attribute attacks to specific threat actors. This creates blind spots in investigations and can result in incomplete remediation, allowing adversaries to maintain persistent access even after partial detection. The impact includes loss of forensic evidence, inability to determine full attack scope, compromised legal proceedings requiring evidence, and extended dwell time due to incomplete attacker eviction.</p>
+<p>Detection requires monitoring for log clearing activities, tracking file deletion patterns particularly for logs and forensic artifacts, identifying timestamp manipulation through file system anomalies, and correlating indicator removal attempts with other suspicious activities. Organizations should implement centralized logging with write-once storage, enable tamper protection on critical logs, and alert on any log clearing, large-scale file deletion, or timestamp modification activities.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>1. Windows Event Log clearing (T1070.001)</li>
+<li>2. Linux/Unix log file deletion or truncation (T1070.002)</li>
+<li>3. Command history clearing (bash, PowerShell) (T1070.003)</li>
+<li>4. Mass file deletion or wiping (T1070.004)</li>
+<li>5. Timestamp manipulation (timestomp) (T1070.006)</li>
+<li>6. Specific security log deletion or selective event removal</li>
+<li>7. Log rotation manipulation or premature log rollover</li>
+<li>8. USN journal deletion or volume shadow copy removal (T1070.004)</li>
+<li>9. Prefetch file deletion or forensic artifact removal (T1070.004)</li>
+<li>10. SIEM/logging agent tampering or log forwarding disruption</li>
+</ol>
+<hr>
+<h3>1. Windows Event Log Clearing</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 1102 (Security audit log cleared) - Critical indicator</li>
+<li>Event ID 1100 (Event logging service shutdown)</li>
+<li>Event ID 4719 (System audit policy changed) - Often precedes clearing</li>
+<li>Key fields: <code>SubjectUserName</code>, <code>SubjectDomainName</code>, <code>SubjectLogonId</code></li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 104 (Log file cleared) - Individual log channel clearing</li>
+<li>Event ID 1102 (Audit log cleared) - System log specific</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Log clearing commands</li>
+<li>Event ID 13 (Registry value set) - Event log registry modifications</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - PowerShell log clearing commands</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>wevtutil cl Security</code></li>
+<li><code>wevtutil cl System</code></li>
+<li><code>wevtutil cl Application</code></li>
+<li><code>wevtutil cl &quot;Microsoft-Windows-Sysmon/Operational&quot;</code></li>
+<li><code>Clear-EventLog -LogName Security</code></li>
+<li><code>Get-EventLog -List | ForEach-Object {Clear-EventLog $_.Log}</code></li>
+<li><code>wmic nteventlog where filename='Security' call cleareventlog</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Security log clearing (highest priority)</li>
+<li>System and Application log clearing</li>
+<li>Sysmon operational log clearing</li>
+<li>Multiple logs cleared in sequence</li>
+<li>Log clearing by non-administrative accounts</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 1102 in Security log showing manual clearing without authorized change management</li>
+<li>Multiple logs cleared within 5-10 minute window (Security, System, Application, Sysmon)</li>
+<li><code>wevtutil cl</code> commands executed during active intrusion or lateral movement</li>
+<li>PowerShell <code>Clear-EventLog</code> targeting Security or Sysmon logs</li>
+<li>Event ID 104 showing log clearing during off-hours (00:00-06:00)</li>
+<li>Log clearing immediately following credential dumping, file access, or exfiltration</li>
+<li>User accounts clearing logs that don’t have legitimate administrative duties</li>
+<li>WMI-based log clearing: <code>wmic nteventlog ... cleareventlog</code></li>
+<li>Log clearing from compromised service accounts</li>
+<li>Automated scripts clearing logs on multiple systems simultaneously</li>
+</ul>
+<hr>
+<h3>2. Linux/Unix Log File Deletion or Truncation</h3>
+<p><strong>Linux/Unix System Logs:</strong></p>
+<ul>
+<li><code>/var/log/auth.log</code> (Debian/Ubuntu) or <code>/var/log/secure</code> (RHEL/CentOS) - Authentication logs</li>
+<li><code>/var/log/syslog</code> or <code>/var/log/messages</code> - System logs</li>
+<li><code>/var/log/wtmp</code> - Login records</li>
+<li><code>/var/log/btmp</code> - Failed login attempts</li>
+<li><code>/var/log/lastlog</code> - Last login information</li>
+<li><code>~/.bash_history</code> - Command history</li>
+</ul>
+<p><strong>Detection Methods:</strong></p>
+<ul>
+<li>File integrity monitoring (FIM) alerts on log file deletion</li>
+<li>Audit daemon (auditd) logs showing log file modifications</li>
+<li>Syslog forwarding gaps or interruptions</li>
+<li>File timestamps showing recent modification on historical logs</li>
+</ul>
+<p><strong>Commands Used for Log Clearing:</strong></p>
+<ul>
+<li><code>rm -rf /var/log/*</code></li>
+<li><code>echo &quot;&quot; &gt; /var/log/auth.log</code></li>
+<li><code>cat /dev/null &gt; /var/log/syslog</code></li>
+<li><code>truncate -s 0 /var/log/secure</code></li>
+<li><code>history -c</code> (clear command history)</li>
+<li><code>rm ~/.bash_history</code></li>
+<li><code>ln -sf /dev/null ~/.bash_history</code> (prevent history logging)</li>
+<li><code>unset HISTFILE</code> (disable history for session)</li>
+</ul>
+<p><strong>Auditd Rules to Monitor:</strong></p>
+<ul>
+<li><code>-w /var/log/ -p wa -k log_deletion</code></li>
+<li><code>-w /var/log/auth.log -p wa -k auth_log_tampering</code></li>
+<li><code>-w /var/log/secure -p wa -k secure_log_tampering</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Authentication and authorization log deletion</li>
+<li>System log truncation or deletion</li>
+<li>Command history clearing</li>
+<li>Login record manipulation</li>
+<li>Log file permission changes preventing writing</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>/var/log/auth.log</code> or <code>/var/log/secure</code> suddenly empty or truncated</li>
+<li><code>wtmp</code>, <code>btmp</code>, or <code>lastlog</code> files deleted or zeroed out</li>
+<li><code>.bash_history</code> files deleted across multiple user accounts</li>
+<li>Log files showing recent modification timestamps but empty or minimal content</li>
+<li>Auditd detecting write access to log files by non-root or unexpected processes</li>
+<li>Symbolic links created from log files to <code>/dev/null</code></li>
+<li><code>HISTFILE</code> unset or pointing to <code>/dev/null</code> in bash sessions</li>
+<li>Log files with changed permissions preventing normal logging (chmod 000)</li>
+<li>Gaps in syslog forwarding to central logging infrastructure</li>
+<li>Log deletion following SSH access from external or suspicious IPs</li>
+</ul>
+<hr>
+<h3>3. Command History Clearing (bash, PowerShell)</h3>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - History clearing commands</li>
+<li>Absence of expected Event ID 4104 logs (history cleared)</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Commands clearing PowerShell history</li>
+<li>Event ID 4663 (Access attempted to object) - Access to history files</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - History clearing commands</li>
+<li>Event ID 11 (File created) - History file deletions or truncations</li>
+<li>Event ID 23 (File deleted) - PowerShell or bash history deletion</li>
+</ul>
+<p><strong>PowerShell History Locations:</strong></p>
+<ul>
+<li><code>$env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt</code></li>
+<li>PowerShell event logs (when cleared)</li>
+</ul>
+<p><strong>Linux/Unix History Files:</strong></p>
+<ul>
+<li><code>~/.bash_history</code></li>
+<li><code>~/.zsh_history</code></li>
+<li><code>~/.sh_history</code></li>
+<li><code>~/.mysql_history</code></li>
+<li><code>~/.python_history</code></li>
+</ul>
+<p><strong>Command Patterns:</strong></p>
+<ul>
+<li>Windows PowerShell:
+<ul>
+<li><code>Clear-History</code></li>
+<li><code>Remove-Item (Get-PSReadlineOption).HistorySavePath</code></li>
+<li><code>Set-PSReadlineOption -HistorySaveStyle SaveNothing</code></li>
+<li><code>del (Get-PSReadlineOption).HistorySavePath</code></li>
+</ul>
+</li>
+<li>Linux/Unix:
+<ul>
+<li><code>history -c</code></li>
+<li><code>rm ~/.bash_history</code></li>
+<li><code>cat /dev/null &gt; ~/.bash_history</code></li>
+<li><code>unset HISTFILE</code></li>
+<li><code>export HISTSIZE=0</code></li>
+</ul>
+</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>PowerShell command history deletion</li>
+<li>Bash history clearing on Linux/Unix</li>
+<li>History settings changed to prevent logging</li>
+<li>Multiple user histories cleared simultaneously</li>
+<li>History clearing following suspicious command execution</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>PowerShell <code>ConsoleHost_history.txt</code> deleted or truncated</li>
+<li><code>Clear-History</code> or <code>Remove-Item</code> targeting PowerShell history file</li>
+<li><code>Set-PSReadlineOption -HistorySaveStyle SaveNothing</code> preventing history saves</li>
+<li><code>.bash_history</code> deleted on Linux systems following SSH access</li>
+<li><code>history -c</code> command executed during active session</li>
+<li><code>HISTFILE</code> environment variable unset or set to <code>/dev/null</code></li>
+<li>Multiple user account history files deleted within short timeframe</li>
+<li>History files showing modification timestamps but minimal or no content</li>
+<li>History clearing immediately following credential dumping, lateral movement, or data exfiltration</li>
+<li>Sysmon Event ID 23 showing deletion of <code>ConsoleHost_history.txt</code> or <code>.bash_history</code></li>
+</ul>
+<hr>
+<h3>4. Mass File Deletion or Wiping</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 23 (File deleted) - High volume of file deletions</li>
+<li>Event ID 26 (File deleted - alternate stream) - ADS deletion</li>
+<li>Key fields: <code>TargetFilename</code>, <code>User</code>, <code>Image</code> (deleting process)</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4660 (Object deleted) - File deletion events</li>
+<li>Event ID 4663 (Access attempted to object) - Delete access requests</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>USN Journal events showing mass deletions</li>
+</ul>
+<p><strong>File System Forensics:</strong></p>
+<ul>
+<li>$MFT analysis showing deleted file entries</li>
+<li>Volume Shadow Copy Service events</li>
+<li>Recycle Bin bypass indicators</li>
+</ul>
+<p><strong>Tools Used for Secure Deletion:</strong></p>
+<ul>
+<li><code>sdelete.exe</code> (SysInternals)</li>
+<li><code>cipher.exe /w</code> (Windows secure delete)</li>
+<li><code>shred</code> (Linux)</li>
+<li><code>wipe</code>, <code>srm</code> (Linux secure deletion)</li>
+<li>Custom scripts with file overwriting</li>
+</ul>
+<p><strong>Command Patterns:</strong></p>
+<ul>
+<li><code>del /f /s /q C:\folder\*</code></li>
+<li><code>rm -rf /path/*</code></li>
+<li><code>Get-ChildItem -Path C:\ -Recurse | Remove-Item -Force</code></li>
+<li><code>sdelete -s -r C:\Evidence\</code></li>
+<li><code>cipher /w:C:\folder</code></li>
+<li><code>shred -vfz -n 10 /path/to/file</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Large numbers of files deleted in short timeframe</li>
+<li>Deletion of log files, forensic artifacts, or tools</li>
+<li>Secure deletion tools indicating intent to prevent recovery</li>
+<li>Deletion from temporary or staging directories</li>
+<li>System files or application data deleted</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Hundreds or thousands of files deleted within minutes (Sysmon Event ID 23 volume spike)</li>
+<li>Deletion of files from <code>%TEMP%</code>, <code>C:\Users\Public\</code>, <code>C:\ProgramData\</code> after data staging</li>
+<li><code>sdelete.exe</code> or <code>cipher.exe /w</code> execution for secure wiping</li>
+<li>PowerShell recursive deletion: <code>Remove-Item -Recurse -Force</code></li>
+<li>Deletion of forensic artifacts: Prefetch files, event logs, USN journal</li>
+<li>Mass deletion immediately following data exfiltration or archive creation</li>
+<li>Deletion of attacker tools and malware to remove evidence</li>
+<li>File deletion by processes in <code>%TEMP%</code> or user directories (cleanup scripts)</li>
+<li>Deletion patterns matching anti-forensics: <code>.log</code>, <code>.evtx</code>, <code>.etl</code> files</li>
+<li>Volume Shadow Copies deleted: <code>vssadmin delete shadows /all /quiet</code></li>
+</ul>
+<hr>
+<h3>5. Timestamp Manipulation (Timestomp)</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 2 (File creation time changed) - Direct timestomp detection</li>
+<li>Event ID 11 (File created) - Files with suspicious timestamps</li>
+<li>Key fields: <code>TargetFilename</code>, <code>CreationUtcTime</code>, <code>PreviousCreationUtcTime</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4663 (Access attempted to object) - WRITE_ATTRIBUTES access</li>
+</ul>
+<p><strong>File System Analysis:</strong></p>
+<ul>
+<li>$MFT analysis showing timestamp discrepancies</li>
+<li>File creation time later than modification time</li>
+<li>Timestamps predating file system creation</li>
+<li>Round timestamps (00:00:00) suggesting manipulation</li>
+</ul>
+<p><strong>Tools Used:</strong></p>
+<ul>
+<li>Metasploit <code>timestomp</code> module</li>
+<li><code>SetMACE.exe</code></li>
+<li>PowerShell scripts: <code>(Get-Item file).CreationTime = &quot;date&quot;</code></li>
+<li>Linux <code>touch</code> command with custom timestamps</li>
+</ul>
+<p><strong>Command Patterns:</strong></p>
+<ul>
+<li>PowerShell:
+<ul>
+<li><code>(Get-Item C:\file.exe).CreationTime = &quot;01/01/2020 12:00:00&quot;</code></li>
+<li><code>(Get-Item file).LastWriteTime = (Get-Item legitimate.exe).LastWriteTime</code></li>
+</ul>
+</li>
+<li>Linux:
+<ul>
+<li><code>touch -t 202001011200.00 /path/to/file</code></li>
+<li><code>touch -r reference_file target_file</code></li>
+</ul>
+</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Files with manipulated creation, modification, or access times</li>
+<li>Timestamps matching legitimate system files (timestomp evasion)</li>
+<li>Suspicious timestamp patterns (very old or future dates)</li>
+<li>Timestamp changes to malware or attacker tools</li>
+<li>Bulk timestamp modifications</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Sysmon Event ID 2 showing file creation time changed for executables or scripts</li>
+<li>Files with creation times predating system installation or significantly in past</li>
+<li>Executables with timestamps matching Windows system files (timestomp to blend in)</li>
+<li>Files with creation time after last modification time (logical impossibility)</li>
+<li>Round timestamps (00:00:00.000) indicating manual manipulation</li>
+<li>Recently dropped malware with timestamps from years ago</li>
+<li>PowerShell commands modifying CreationTime, LastWriteTime, or LastAccessTime properties</li>
+<li>Multiple files timestomped to same timestamp within short period</li>
+<li>Timestamp manipulation immediately after malware deployment or tool staging</li>
+<li>MFT $STANDARD_INFORMATION timestamps differing from $FILE_NAME timestamps (NTFS anti-forensics)</li>
+</ul>
+<hr>
+<h3>6. Specific Security Log Deletion or Selective Event Removal</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 1102 (Audit log cleared) - Full log clearing</li>
+<li>Event gaps in sequential Event IDs</li>
+<li>Missing Event IDs in expected sequences</li>
+</ul>
+<p><strong>SIEM/Log Analysis:</strong></p>
+<ul>
+<li>Gaps in event timelines</li>
+<li>Missing events in expected activity sequences</li>
+<li>Event ID sequences with numerical gaps</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - Scripts selectively removing events</li>
+</ul>
+<p><strong>Command Patterns:</strong></p>
+<ul>
+<li><code>wevtutil qe Security /q:&quot;*[System[(EventID=4624)]]&quot; /f:text | wevtutil cl Security</code></li>
+<li>PowerShell:
+<ul>
+<li><code>Get-EventLog -LogName Security | Where-Object {$_.EventID -eq 4624} | Remove-ItemProperty</code></li>
+<li>Custom scripts parsing and rewriting event logs</li>
+</ul>
+</li>
+</ul>
+<p><strong>Tools:</strong></p>
+<ul>
+<li><code>Invoke-Phant0m</code> (PowerShell script terminating Event Log threads)</li>
+<li><code>Danderspritz EvtDiag</code> (NSA tool for log manipulation)</li>
+<li>Custom log editing tools</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Specific Event IDs missing from logs</li>
+<li>Suspicious gaps in event sequences</li>
+<li>Selective removal of credential access events</li>
+<li>Missing logon/logoff events during known activity</li>
+<li>Tools designed for surgical log manipulation</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID sequence gaps: Event 1000, 1001, 1005 (missing 1002-1004)</li>
+<li>Missing Event ID 4624 (logon) events during period of known remote access</li>
+<li>Absence of Event ID 4688 (process creation) during malware execution timeframe</li>
+<li>PowerShell scripts filtering and removing specific Event IDs</li>
+<li>Event Log threads terminated via process injection (Invoke-Phant0m technique)</li>
+<li>Selective removal of Event ID 4672 (special privileges) or 4768 (Kerberos TGT)</li>
+<li>Missing Sysmon Event ID 1 (process creation) for known attacker tools</li>
+<li>Event gaps correlating with credential dumping, lateral movement, or exfiltration timing</li>
+<li>Tools like <code>Invoke-Phant0m</code> detected suspending Event Log service threads</li>
+<li>Registry modifications to Event Log file sizes forcing premature rollover</li>
+</ul>
+<hr>
+<h3>7. Log Rotation Manipulation or Premature Log Rollover</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event log file size changes</li>
+<li>Unexpected log rollovers or archive operations</li>
+<li>Event ID 1104 (Log file rollover)</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 13 (Registry value set) - Event log MaxSize modifications</li>
+<li>Event ID 255 (Error) - Sysmon configuration issues</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 6 (Event Log configuration changed)</li>
+<li>Event ID 104 (Log cleared) - Related to size manipulation</li>
+</ul>
+<p><strong>Registry Keys:</strong></p>
+<ul>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Security\MaxSize</code></li>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Services\EventLog\System\MaxSize</code></li>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Application\MaxSize</code></li>
+</ul>
+<p><strong>Command Patterns:</strong></p>
+<ul>
+<li><code>reg add HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Security /v MaxSize /t REG_DWORD /d 1048576 /f</code> (reduce to 1MB)</li>
+<li><code>wevtutil sl Security /ms:1048576</code> (reduce max size)</li>
+<li>PowerShell: <code>Limit-EventLog -LogName Security -MaximumSize 1MB</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Event log max size reduced dramatically</li>
+<li>Premature log rollovers during active intrusion</li>
+<li>Configuration changes forcing log data loss</li>
+<li>AutoBackupLogFiles setting disabled</li>
+<li>Retention settings modified</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Security log MaxSize registry value changed from default (20MB+) to minimal (1MB or less)</li>
+<li><code>wevtutil sl</code> commands reducing log file maximum sizes</li>
+<li>Event log size reductions during active intrusion or lateral movement</li>
+<li>Multiple log channel sizes reduced simultaneously</li>
+<li>AutoBackupLogFiles disabled preventing log archival</li>
+<li>Log retention changed from “Archive” to “Overwrite” mode</li>
+<li>Event ID 1104 showing premature log rollover due to size constraints</li>
+<li>Registry modifications reducing Sysmon log size to minimal values</li>
+<li>Log size manipulation immediately preceding high-volume attacker activity</li>
+<li>Configuration changes forcing loss of forensic evidence through overwrites</li>
+</ul>
+<hr>
+<h3>8. USN Journal Deletion or Volume Shadow Copy Removal</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Commands affecting VSS or USN journal</li>
+<li>Event ID 4656 (Handle to object requested) - Access to volume devices</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 8222 (Shadow copy created) - VSS activity</li>
+<li>Event ID 8224 (Shadow copy deleted) - VSS deletion</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - VSS and USN journal commands</li>
+<li>Event ID 11 (File created) - USN journal file operations</li>
+</ul>
+<p><strong>Command Patterns:</strong></p>
+<ul>
+<li>Volume Shadow Copy deletion:
+<ul>
+<li><code>vssadmin delete shadows /all /quiet</code></li>
+<li><code>wmic shadowcopy delete</code></li>
+<li><code>Get-WmiObject Win32_ShadowCopy | ForEach-Object {$_.Delete()}</code></li>
+</ul>
+</li>
+<li>USN Journal deletion:
+<ul>
+<li><code>fsutil usn deletejournal /D C:</code></li>
+<li><code>fsutil usn deletejournal /N C:</code></li>
+</ul>
+</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Volume Shadow Copy deletion (removes backup/restore capability)</li>
+<li>USN journal deletion (removes file system change tracking)</li>
+<li>Commands targeting forensic data sources</li>
+<li>Deletion preventing system restore or recovery</li>
+<li>Anti-forensics intent</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>vssadmin delete shadows /all</code> removing all restore points</li>
+<li>WMI commands deleting shadow copies: <code>wmic shadowcopy delete</code></li>
+<li>PowerShell deleting VSS: <code>Get-WmiObject Win32_ShadowCopy | Remove-WmiObject</code></li>
+<li><code>fsutil usn deletejournal</code> removing USN change journal</li>
+<li>Event ID 8224 showing shadow copy deletion during active intrusion</li>
+<li>VSS deletion immediately before ransomware deployment</li>
+<li>USN journal deletion to hide file access, creation, or deletion activity</li>
+<li>Multiple volumes having shadow copies deleted simultaneously</li>
+<li>Commands executed with <code>/quiet</code> parameter to suppress user notifications</li>
+<li>VSS and USN journal deletion combined with other anti-forensic techniques</li>
+</ul>
+<hr>
+<h3>9. Prefetch File Deletion or Forensic Artifact Removal</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 23 (File deleted) - Prefetch, jump list, or MRU file deletion</li>
+<li>Event ID 26 (File deleted - alternate stream) - ADS removal</li>
+<li>Key fields: <code>TargetFilename</code>, pattern matching forensic paths</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4660 (Object deleted) - Deletion of forensic artifacts</li>
+<li>Event ID 4663 (Access attempted to object) - Access to forensic locations</li>
+</ul>
+<p><strong>Forensic Artifact Locations:</strong></p>
+<ul>
+<li>Prefetch: <code>C:\Windows\Prefetch\*.pf</code></li>
+<li>Jump Lists: <code>C:\Users\*\AppData\Roaming\Microsoft\Windows\Recent\AutomaticDestinations\</code></li>
+<li>Recent files: <code>C:\Users\*\AppData\Roaming\Microsoft\Windows\Recent\</code></li>
+<li>SRUM: <code>C:\Windows\System32\sru\SRUDB.dat</code></li>
+<li>Amcache: <code>C:\Windows\AppCompat\Programs\Amcache.hve</code></li>
+<li>ShimCache: Registry <code>HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache</code></li>
+</ul>
+<p><strong>Command Patterns:</strong></p>
+<ul>
+<li><code>del /f /q C:\Windows\Prefetch\*.pf</code></li>
+<li><code>Remove-Item C:\Windows\Prefetch\* -Force</code></li>
+<li><code>del /f /q C:\Users\*\AppData\Roaming\Microsoft\Windows\Recent\*</code></li>
+<li><code>reg delete &quot;HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache&quot; /f</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Prefetch file deletion (program execution history)</li>
+<li>Jump list deletion (file access history)</li>
+<li>Recent files/MRU deletion (user activity tracking)</li>
+<li>Amcache or ShimCache clearing (execution artifacts)</li>
+<li>SRUM database tampering (system resource usage)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Mass deletion of <code>.pf</code> files from <code>C:\Windows\Prefetch\</code></li>
+<li>Deletion of jump lists and recent file artifacts</li>
+<li><code>del</code> or <code>Remove-Item</code> commands targeting forensic artifact directories</li>
+<li>Prefetch deletion immediately following malware execution or tool usage</li>
+<li>Selective deletion of specific prefetch files matching attacker tool names</li>
+<li>Jump list deletion for applications used during intrusion</li>
+<li>Amcache.hve deletion or modification to hide execution evidence</li>
+<li>Registry deletion of AppCompatCache (ShimCache) entries</li>
+<li>SRUM database deletion or corruption</li>
+<li>Deletion of artifacts from multiple user profiles simultaneously</li>
+</ul>
+<hr>
+<h3>10. SIEM/Logging Agent Tampering or Log Forwarding Disruption</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Commands affecting logging agents</li>
+<li>Event ID 4697 (Service installed) - Logging service modifications</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 7036 (Service state change) - Logging agent services stopped</li>
+<li>Event ID 7040 (Service startup type changed) - Agent disabled</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Commands targeting logging infrastructure</li>
+<li>Event ID 5 (Process terminated) - Logging agent termination</li>
+<li>Event ID 255 (Error) - Sysmon service errors or tampering</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Syslog forwarding interruptions</li>
+<li>Loss of log flow to SIEM</li>
+<li>Agent heartbeat failures</li>
+</ul>
+<p><strong>Logging Agents:</strong></p>
+<ul>
+<li>Splunk Universal Forwarder: <code>splunkd.exe</code>, <code>SplunkForwarder</code> service</li>
+<li>Elastic Beats: <code>filebeat.exe</code>, <code>winlogbeat.exe</code></li>
+<li>NXLog: <code>nxlog.exe</code>, <code>nxlog</code> service</li>
+<li>Sysmon: <code>Sysmon.exe</code>, <code>Sysmon</code> service</li>
+<li>Windows Event Forwarding (WEF): <code>wecsvc</code> service</li>
+</ul>
+<p><strong>Command Patterns:</strong></p>
+<ul>
+<li><code>net stop SplunkForwarder</code></li>
+<li><code>sc config SplunkForwarder start=disabled</code></li>
+<li><code>taskkill /F /IM splunkd.exe</code></li>
+<li><code>Stop-Service -Name nxlog -Force</code></li>
+<li><code>fltmc unload SysmonDrv</code> (Sysmon driver unload)</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Logging agent services stopped or disabled</li>
+<li>Log forwarding process termination</li>
+<li>Network connectivity disruption to SIEM</li>
+<li>Configuration file modification preventing forwarding</li>
+<li>Logging agent uninstallation</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Splunk, NXLog, or Elastic Beat services stopped (Event ID 7036)</li>
+<li><code>net stop</code> or <code>sc config</code> commands targeting logging agent services</li>
+<li><code>taskkill</code> terminating logging agent processes</li>
+<li>Sysmon service stopped or driver unloaded: <code>fltmc unload SysmonDrv</code></li>
+<li>Gaps in log forwarding to SIEM during active intrusion</li>
+<li>Logging agent configuration files deleted or modified to disable forwarding</li>
+<li>Network connections from logging agents to SIEM interrupted</li>
+<li>Agent processes terminated by processes in <code>%TEMP%</code> or user directories</li>
+<li>Windows Event Forwarding (WEF) subscription disabled or source collector stopped</li>
+<li>Multiple systems showing logging agent failures simultaneously (coordinated attack)</li>
+</ul>
+<hr>
+<h1>Indicator Removal (T1070) Investigation Checklist</h1>
+
+<h2>1. Windows Event Log Clearing</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 1102 in Security log for audit log cleared events</label></li>
+  <li><label><input type="checkbox"> Review Event ID 104 in System log for individual log channel clearing</label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688 for: <code>wevtutil cl</code>, <code>Clear-EventLog</code>, <code>wmic nteventlog</code></label></li>
+  <li><label><input type="checkbox"> Review PowerShell Event ID 4104 for log clearing commands</label></li>
+  <li><label><input type="checkbox"> Identify multiple logs cleared within 5-10 minute window</label></li>
+  <li><label><input type="checkbox"> Correlate log clearing with credential dumping or exfiltration activity</label></li>
+</ul>
+
+<h2>2. Linux/Unix Log Deletion</h2>
+<ul>
+  <li><label><input type="checkbox"> Check file integrity monitoring (FIM) alerts for <code>/var/log/</code> modifications</label></li>
+  <li><label><input type="checkbox"> Search auditd logs for: <code>-w /var/log/ -p wa -k log_deletion</code></label></li>
+  <li><label><input type="checkbox"> Verify <code>/var/log/auth.log</code> and <code>/var/log/secure</code> not truncated or deleted</label></li>
+  <li><label><input type="checkbox"> Check for deleted/zeroed: <code>wtmp</code>, <code>btmp</code>, <code>lastlog</code> files</label></li>
+  <li><label><input type="checkbox"> Review for symbolic links from log files to <code>/dev/null</code></label></li>
+  <li><label><input type="checkbox"> Identify gaps in syslog forwarding to central logging</label></li>
+</ul>
+
+<h2>3. Command History Clearing</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 23 for deletion of <code>ConsoleHost_history.txt</code> or <code>.bash_history</code></label></li>
+  <li><label><input type="checkbox"> Search PowerShell Event ID 4104 for: <code>Clear-History</code>, <code>Remove-Item (Get-PSReadlineOption).HistorySavePath</code></label></li>
+  <li><label><input type="checkbox"> Review Event ID 4688 for: <code>history -c</code>, <code>rm ~/.bash_history</code>, <code>unset HISTFILE</code></label></li>
+  <li><label><input type="checkbox"> Verify PowerShell history file exists: <code>%APPDATA%\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt</code></label></li>
+  <li><label><input type="checkbox"> Check for <code>Set-PSReadlineOption -HistorySaveStyle SaveNothing</code></label></li>
+  <li><label><input type="checkbox"> Identify history clearing following credential access or lateral movement</label></li>
+</ul>
+
+<h2>4. Mass File Deletion</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 23 for high-volume file deletions (spike detection)</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4660/4663 for deletion from <code>%TEMP%</code>, <code>C:\ProgramData\</code>, <code>C:\Users\Public\</code></label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688 for: <code>sdelete</code>, <code>cipher /w</code>, <code>Remove-Item -Recurse -Force</code></label></li>
+  <li><label><input type="checkbox"> Identify deletion of <code>.log</code>, <code>.evtx</code>, <code>.etl</code>, <code>.pf</code> files (forensic artifacts)</label></li>
+  <li><label><input type="checkbox"> Check for: <code>vssadmin delete shadows /all /quiet</code></label></li>
+  <li><label><input type="checkbox"> Correlate mass deletion with data exfiltration timing</label></li>
+</ul>
+
+<h2>5. Timestamp Manipulation</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 2 for file creation time changed on executables</label></li>
+  <li><label><input type="checkbox"> Check for files with creation time &gt; modification time (logical impossibility)</label></li>
+  <li><label><input type="checkbox"> Identify executables with timestamps predating system installation</label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688 for PowerShell commands modifying: <code>CreationTime</code>, <code>LastWriteTime</code></label></li>
+  <li><label><input type="checkbox"> Review for round timestamps (00:00:00.000) indicating manual manipulation</label></li>
+  <li><label><input type="checkbox"> Analyze $MFT for $STANDARD_INFORMATION vs $FILE_NAME timestamp discrepancies</label></li>
+</ul>
+
+<h2>6. Selective Event Removal</h2>
+<ul>
+  <li><label><input type="checkbox"> Identify sequential Event ID gaps (e.g., 1000, 1001, 1005 missing 1002-1004)</label></li>
+  <li><label><input type="checkbox"> Check for missing Event ID 4624/4688 during known activity periods</label></li>
+  <li><label><input type="checkbox"> Search PowerShell Event ID 4104 for scripts filtering/removing specific Event IDs</label></li>
+  <li><label><input type="checkbox"> Review for tools: <code>Invoke-Phant0m</code>, Danderspritz EvtDiag</label></li>
+  <li><label><input type="checkbox"> Correlate event gaps with credential dumping or lateral movement timing</label></li>
+</ul>
+
+<h2>7. Log Rotation Manipulation</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 13 for MaxSize modifications: <code>HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Security\MaxSize</code></label></li>
+  <li><label><input type="checkbox"> Review Event ID 1104 for premature log rollovers during intrusion</label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688 for: <code>wevtutil sl Security /ms:</code>, <code>Limit-EventLog</code></label></li>
+  <li><label><input type="checkbox"> Verify Security log MaxSize not reduced to minimal values (&lt; 5MB)</label></li>
+  <li><label><input type="checkbox"> Check AutoBackupLogFiles not disabled preventing archival</label></li>
+</ul>
+
+<h2>8. USN Journal &amp; Shadow Copy Deletion</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 8224 in System log for shadow copy deletions</label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688 for: <code>vssadmin delete shadows</code>, <code>wmic shadowcopy delete</code>, <code>fsutil usn deletejournal</code></label></li>
+  <li><label><input type="checkbox"> Review PowerShell Event ID 4104 for: <code>Get-WmiObject Win32_ShadowCopy | Remove-WmiObject</code></label></li>
+  <li><label><input type="checkbox"> Identify VSS deletion immediately before ransomware or during active intrusion</label></li>
+  <li><label><input type="checkbox"> Check for USN journal deletion to hide file system activity</label></li>
+</ul>
+
+<h2>9. Forensic Artifact Removal</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 23 for deletion from: <code>C:\Windows\Prefetch\*.pf</code></label></li>
+  <li><label><input type="checkbox"> Check for deletion from: <code>C:\Users\*\AppData\Roaming\Microsoft\Windows\Recent\</code></label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688 for: <code>del /f /q C:\Windows\Prefetch\</code>, <code>Remove-Item C:\Windows\Prefetch\*</code></label></li>
+  <li><label><input type="checkbox"> Verify Amcache.hve not deleted: <code>C:\Windows\AppCompat\Programs\Amcache.hve</code></label></li>
+  <li><label><input type="checkbox"> Check registry for AppCompatCache deletion: <code>HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache</code></label></li>
+</ul>
+
+<h2>10. SIEM/Logging Agent Tampering</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 7036/7040 for logging agent services stopped: Splunk, NXLog, Elastic Beats, Sysmon</label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688 for: <code>net stop SplunkForwarder</code>, <code>sc config</code>, <code>taskkill /IM splunkd.exe</code></label></li>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 5 for logging agent process termination</label></li>
+  <li><label><input type="checkbox"> Check for Sysmon driver unload: <code>fltmc unload SysmonDrv</code></label></li>
+  <li><label><input type="checkbox"> Identify gaps in log forwarding to SIEM during active intrusion</label></li>
+  <li><label><input type="checkbox"> Verify Windows Event Forwarding (WEF) subscriptions not disabled</label></li>
+</ul>
+
+
+</body>
+</html>
