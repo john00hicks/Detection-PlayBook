@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Valid Accounts (T1078)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Valid Accounts: <a href="https://attack.mitre.org/techniques/T1078/">T1078</a></h1>
+<h2>Detection Explanation</h2>
+<p>Adversaries may obtain and abuse credentials of existing accounts to gain initial access, persistence, privilege escalation, or defence evasion. This includes compromised user accounts, service accounts, domain accounts, local accounts, cloud accounts, and default accounts. Attackers may obtain credentials through phishing, credential dumping, purchasing credentials on dark web markets, or brute force attacks.</p>
+<p><strong>Key Detection Indicators:</strong></p>
+<ul>
+<li>Account logins from unusual locations or IP addresses</li>
+<li>Authentication at abnormal times (outside business hours)</li>
+<li>Multiple failed login attempts followed by successful authentication</li>
+<li>Concurrent logins from geographically disparate locations (impossible travel)</li>
+<li>Use of dormant or disabled accounts</li>
+<li>Privileged account usage from non-administrative workstations</li>
+<li>Service account interactive logins</li>
+<li>Spike in authentication attempts against multiple accounts</li>
+<li>Authentication using legacy protocols (NTLM when Kerberos is standard)</li>
+<li>Successful logins after password spray or brute force attempts</li>
+</ul>
+<p><strong>Detection Strategy:</strong> Monitor authentication logs for anomalous patterns including geographic anomalies, temporal anomalies, and behavioral deviations. Correlate failed and successful authentication attempts to identify credential compromise. Track privileged account usage and service account behavior. Implement user and entity behavior analytics (UEBA) to establish baselines and detect deviations.</p>
+<h2>Areas to Investigate</h2>
+<h3>Account logins from unusual locations or IP addresses</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4624 (Successful logon) - Check <code>IpAddress</code> and <code>WorkstationName</code> fields</li>
+<li>Event ID 4625 (Failed logon) - Monitor source IPs attempting authentication</li>
+<li>Event ID 4648 (Logon with explicit credentials) - Track credential usage from different hosts</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>VPN authentication logs - Source IP geolocation data</li>
+<li>Firewall logs - Authentication attempts from external IPs</li>
+<li>Proxy logs - User authentication with source IP information</li>
+<li>Cloud provider logs (Azure AD, AWS CloudTrail, Google Workspace) - Sign-in logs with IP geolocation</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Correlate with authentication events to track connection sources</li>
+</ul>
+<hr>
+<h3>Authentication at abnormal times (outside business hours)</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4624 (Successful logon) - Filter by timestamp outside 7 AM - 7 PM (or your business hours)</li>
+<li>Event ID 4634 (Account logoff) - Track logon duration and timing</li>
+<li>Event ID 4647 (User initiated logoff) - Verify expected session times</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>VPN connection logs - Timestamp analysis for after-hours connections</li>
+<li>Web application access logs - Authentication timestamp review</li>
+<li>Database authentication logs - Query execution times</li>
+</ul>
+<hr>
+<h3>Multiple failed login attempts followed by successful authentication</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4625 (Failed logon) - Count failures per account/IP within time window</li>
+<li>Event ID 4624 (Successful logon) - Correlate success following failures</li>
+<li>Event ID 4771 (Kerberos pre-authentication failed) - Domain controller authentication failures</li>
+<li>Event ID 4776 (Credential validation) - NTLM authentication attempts</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Application authentication logs - Failed login counters</li>
+<li>SSH logs (auth.log on Linux) - Failed authentication attempts</li>
+<li>Web server logs - HTTP 401/403 responses followed by 200</li>
+<li>Load balancer logs - Authentication failure patterns</li>
+</ul>
+<hr>
+<h3>Concurrent logins from geographically disparate locations (impossible travel)</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4624 (Successful logon) - Compare sequential logon locations for same account</li>
+<li>Event ID 4778 (Session reconnected) - Remote Desktop session reconnections</li>
+<li>Event ID 4779 (Session disconnected) - Track session transitions</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>VPN logs - Multiple concurrent sessions from different geolocations</li>
+<li>Cloud service logs (Office 365, AWS, Azure AD) - Sign-in activity from different regions</li>
+<li>Proxy logs - User requests originating from multiple geographic locations simultaneously</li>
+</ul>
+<hr>
+<h3>Use of dormant or disabled accounts</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4624 (Successful logon) - Cross-reference with Active Directory last logon timestamps</li>
+<li>Event ID 4720 (User account created) - New account creation followed by immediate use</li>
+<li>Event ID 4722 (User account enabled) - Recently re-enabled accounts with logon activity</li>
+<li>Event ID 4725 (User account disabled) - Attempts to use disabled accounts (should generate 4625)</li>
+</ul>
+<p><strong>Active Directory Logs:</strong></p>
+<ul>
+<li>Event ID 4738 (User account changed) - Account modifications before logon activity</li>
+<li>Query AD for <code>lastLogonTimestamp</code> attribute - Identify accounts inactive for 90+ days</li>
+</ul>
+<hr>
+<h3>Privileged account usage from non-administrative workstations</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4624 (Successful logon) with <code>LogonType=2</code> (Interactive) or <code>LogonType=10</code> (RemoteInteractive/RDP)</li>
+<li>Event ID 4672 (Special privileges assigned) - Admin rights granted to logon session</li>
+<li>Event ID 4648 (Logon with explicit credentials) - RunAs or PsExec with admin accounts</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Processes running with admin privileges from user workstations</li>
+<li>Event ID 10 (Process access) - LSASS access from non-admin systems</li>
+</ul>
+<hr>
+<h3>Service account interactive logins</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4624 with <code>LogonType=2</code> (Interactive) or <code>LogonType=10</code> (RemoteInteractive) - Service accounts should only use <code>LogonType=5</code> (Service)</li>
+<li>Event ID 4624 with <code>LogonType=3</code> (Network) - Normal for service accounts, but monitor for unusual patterns</li>
+<li>Event ID 4672 (Special privileges) - Service accounts receiving interactive privileges</li>
+</ul>
+<p><strong>Identify service accounts by naming patterns:</strong></p>
+<ul>
+<li>Accounts with naming conventions: svc__, service__, _<em>svc, sql</em>, apache, nginx, tomcat</li>
+</ul>
+<hr>
+<h3>Spike in authentication attempts against multiple accounts</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4625 (Failed logon) - High volume across different usernames from single source</li>
+<li>Event ID 4771 (Kerberos pre-authentication failed) - Password spray detection</li>
+<li>Event ID 4768 (Kerberos TGT requested) - Unusual volume of ticket requests</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Web application logs - Multiple username attempts in authentication endpoints</li>
+<li>VPN logs - Failed authentication across many users</li>
+<li>Firewall logs - Authentication request volume from single IP</li>
+</ul>
+<hr>
+<h3>Authentication using legacy protocols (NTLM when Kerberos is standard)</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4776 (Credential validation) - NTLM authentication events</li>
+<li>Event ID 4624 with <code>AuthenticationPackageName=NTLM</code> - Check when Kerberos should be used</li>
+<li>Event ID 4768/4769 (Kerberos ticket operations) - Absence indicates non-Kerberos authentication</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>SMB logs - Look for NTLMv1 or NTLMv2 authentication when Kerberos expected</li>
+<li>Packet captures - NTLM authentication traffic on port 445</li>
+</ul>
+<hr>
+<h3>Successful logins after password spray or brute force attempts</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4625 (Failed logon) with <code>FailureReason=0xC000006A</code> (Bad password) - Multiple accounts, same password pattern</li>
+<li>Event ID 4625 with <code>FailureReason=0xC0000064</code> (User does not exist) - Username enumeration</li>
+<li>Event ID 4740 (Account locked out) - Lockouts indicating brute force</li>
+<li>Event ID 4624 (Successful logon) - Success shortly after spray pattern</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Authentication logs showing failed attempts with common passwords across multiple accounts</li>
+<li>Rate of authentication requests exceeding normal baseline</li>
+</ul>
+<hr>
+<h2>Additional Investigation Areas</h2>
+<p><strong>Active Directory:</strong></p>
+<ul>
+<li>Event ID 4768 (Kerberos TGT requested) - Unusual ticket requests</li>
+<li>Event ID 4769 (Kerberos service ticket requested) - Service access patterns</li>
+<li>Event ID 4770 (Kerberos service ticket renewed) - Long-running sessions</li>
+</ul>
+<p><strong>Cloud Services:</strong></p>
+<ul>
+<li>Azure AD Sign-in logs - <code>resultType</code>, <code>location</code>, <code>ipAddress</code>, <code>clientAppUsed</code></li>
+<li>AWS CloudTrail - <code>ConsoleLogin</code>, <code>AssumeRole</code>, <code>GetSessionToken</code> events</li>
+<li>Google Workspace - Admin console audit logs for login activity</li>
+<li>Office 365 Unified Audit Log - <code>UserLoggedIn</code>, <code>UserLoginFailed</code> events</li>
+</ul>
+<p><strong>Correlation Opportunities:</strong></p>
+<ul>
+<li>Cross-reference logon events with EDR telemetry for post-authentication behavior</li>
+<li>Correlate authentication logs with data exfiltration or lateral movement indicators</li>
+<li>Compare authentication patterns against user behavior baselines (UEBA)</li>
+</ul>
+<h1>Valid Accounts Abuse Investigation Checklist</h1>
+
+<h2>1. Unusual Login Locations</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4624 for logins from unexpected IpAddress or WorkstationName fields</label></li>
+  <li><label><input type="checkbox"> Check VPN and firewall logs for authentication from external/foreign IP addresses</label></li>
+  <li><label><input type="checkbox"> Review cloud service logs (Azure AD, AWS CloudTrail, Google Workspace) for geolocation anomalies</label></li>
+  <li><label><input type="checkbox"> Correlate Sysmon Event ID 3 with authentication events to track connection sources</label></li>
+  <li><label><input type="checkbox"> Identify logins from IP addresses not associated with corporate networks</label></li>
+</ul>
+
+<h2>2. Off-Hours Authentication</h2>
+<ul>
+  <li><label><input type="checkbox"> Filter Event ID 4624 for timestamps outside business hours (e.g., 7 PM - 7 AM)</label></li>
+  <li><label><input type="checkbox"> Review VPN connection logs for after-hours or weekend access</label></li>
+  <li><label><input type="checkbox"> Check web application access logs for authentication during unusual times</label></li>
+  <li><label><input type="checkbox"> Identify patterns of consistent off-hours access by privileged accounts</label></li>
+  <li><label><input type="checkbox"> Correlate timing with user’s normal work schedule or time zone</label></li>
+</ul>
+
+<h2>3. Failed-Then-Successful Login Patterns</h2>
+<ul>
+  <li><label><input type="checkbox"> Count Event ID 4625 failures per account/IP within 30-minute windows</label></li>
+  <li><label><input type="checkbox"> Correlate Event ID 4625 with subsequent Event ID 4624 success</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4771 (Kerberos pre-auth failed) followed by successful authentication</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4776 for NTLM credential validation attempts</label></li>
+  <li><label><input type="checkbox"> Look for HTTP 401/403 responses followed by 200 in web server logs</label></li>
+</ul>
+
+<h2>4. Impossible Travel Detection</h2>
+<ul>
+  <li><label><input type="checkbox"> Compare sequential Event ID 4624 logins for same account from different geolocations</label></li>
+  <li><label><input type="checkbox"> Check for concurrent VPN sessions from geographically disparate locations</label></li>
+  <li><label><input type="checkbox"> Review cloud service sign-in logs for simultaneous logins from different regions</label></li>
+  <li><label><input type="checkbox"> Calculate time/distance between login locations to identify impossible travel</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4778/4779 for RDP session reconnections from different locations</label></li>
+</ul>
+
+<h2>5. Dormant and Disabled Accounts</h2>
+<ul>
+  <li><label><input type="checkbox"> Cross-reference Event ID 4624 with AD lastLogonTimestamp (flag accounts inactive 90+ days)</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4722 for recently re-enabled accounts with immediate logon activity</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4720 for new account creation followed by rapid use</label></li>
+  <li><label><input type="checkbox"> Identify Event ID 4738 (account changes) preceding authentication activity</label></li>
+  <li><label><input type="checkbox"> Search for Event ID 4625 attempts against disabled accounts</label></li>
+</ul>
+
+<h2>6. Privileged Account Misuse</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4624 with LogonType=2 or LogonType=10 for admin accounts on user workstations</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4672 for admin privileges assigned on non-administrative systems</label></li>
+  <li><label><input type="checkbox"> Identify Event ID 4648 (RunAs/PsExec) with privileged credentials from user workstations</label></li>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 10 for LSASS access from non-admin systems</label></li>
+  <li><label><input type="checkbox"> Verify admin account usage aligns with authorized administrative tasks</label></li>
+</ul>
+
+<h2>7. Service Account Interactive Logins</h2>
+<ul>
+  <li><label><input type="checkbox"> Search Event ID 4624 with LogonType=2 or LogonType=10 for service account names (svc_, sql_, service_)</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4672 showing service accounts receiving interactive privileges</label></li>
+  <li><label><input type="checkbox"> Identify service accounts with unexpected LogonType changes</label></li>
+  <li><label><input type="checkbox"> Check for service accounts authenticating from workstations vs. servers</label></li>
+  <li><label><input type="checkbox"> Verify service account usage matches documented service configurations</label></li>
+</ul>
+
+<h2>8. Password Spray and Brute Force</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4625 with FailureReason=0xC000006A across multiple accounts from single IP</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4740 for account lockouts indicating brute force activity</label></li>
+  <li><label><input type="checkbox"> Identify Event ID 4771 volume spikes (Kerberos pre-auth failures)</label></li>
+  <li><label><input type="checkbox"> Look for Event ID 4624 success shortly after spray pattern detection</label></li>
+  <li><label><input type="checkbox"> Count authentication attempts exceeding normal baseline per IP/account</label></li>
+</ul>
+
+<h2>9. Legacy Protocol Authentication</h2>
+<ul>
+  <li><label><input type="checkbox"> Search Event ID 4776 for NTLM authentication in Kerberos-enforced environments</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4624 with AuthenticationPackageName=NTLM where Kerberos expected</label></li>
+  <li><label><input type="checkbox"> Review SMB logs for NTLMv1 or NTLMv2 usage on modern networks</label></li>
+  <li><label><input type="checkbox"> Identify absence of Event ID 4768/4769 (Kerberos tickets) for domain authentications</label></li>
+  <li><label><input type="checkbox"> Check for NTLM traffic on port 445 via packet captures or network logs</label></li>
+</ul>
+
+<h2>10. Cloud Service Account Abuse</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Azure AD Sign-in logs for suspicious resultType, location, ipAddress, clientAppUsed</label></li>
+  <li><label><input type="checkbox"> Check AWS CloudTrail for ConsoleLogin, AssumeRole, GetSessionToken events from unusual sources</label></li>
+  <li><label><input type="checkbox"> Monitor Google Workspace admin console for abnormal login activity</label></li>
+  <li><label><input type="checkbox"> Review Office 365 Unified Audit Log for UserLoggedIn and UserLoginFailed patterns</label></li>
+  <li><label><input type="checkbox"> Correlate cloud authentication with on-premises activity for hybrid environments</label></li>
+</ul>
+
+
+</body>
+</html>

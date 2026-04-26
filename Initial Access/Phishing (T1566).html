@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Phishing (T1566)</title>
+
+<style>
+  :root{
+    --bg: #f5f5f5;
+    --card: #fff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --brand: #2563eb;
+    --border: #e5e7eb;
+    --focus: #fb923c;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0b0f14; --card:#111827; --text:#e5e7eb; --muted:#94a3b8;
+      --brand:#60a5fa; --border:#1f2937; --focus:#fdba74;
+    }
+  }
+  html,body{height:100%}
+  body{
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif;
+    margin:0; background:var(--bg); color:var(--text); line-height:1.6;
+  }
+  .wrap{max-width:1000px; margin:0 auto; padding:24px}
+  a{color:var(--brand)}
+  a[target="_blank"]::after{content:" ↗"; font-size:.85em; color:var(--muted)}
+  .skip-link{
+    position:absolute; left:-999px; top:auto; width:1px; height:1px; overflow:hidden;
+  }
+  .skip-link:focus{position:static; width:auto; height:auto; padding:.5rem; background:var(--card); border:1px solid var(--border)}
+  header{position:sticky; top:0; z-index:10; backdrop-filter:saturate(180%) blur(8px)}
+  .toolbar{
+    display:flex; gap:12px; align-items:center; padding:12px 24px;
+    border-bottom:1px solid var(--border); background-color:color-mix(in srgb, var(--card) 92%, transparent);
+  }
+  .toolbar h1{font-size:1.25rem; margin:0; flex:1}
+  .toolbar input[type="search"]{
+    max-width:340px; padding:.5rem .75rem; border:1px solid var(--border); border-radius:8px;
+    background:var(--card); color:var(--text)
+  }
+  .toolbar button{
+    padding:.5rem .75rem; border:1px solid var(--border); border-radius:8px;
+    background:var(--card); color:var(--text); cursor:pointer
+  }
+  .toolbar button:focus-visible{outline:3px solid var(--focus); outline-offset:2px}
+
+  nav.toc{
+    margin:16px 0 24px; padding:12px; background:var(--card); border:1px solid var(--border);
+    border-radius:10px;
+  }
+  nav.toc ul{margin:0; padding-left:18px}
+  nav.toc li{margin:.25rem 0}
+
+  h2{
+    color:var(--text); border-bottom:2px solid var(--brand);
+    padding-bottom:6px; margin-top:28px;
+  }
+  details.section{
+    background:var(--card); border:1px solid var(--border); border-radius:12px; margin:16px 0; overflow:hidden
+  }
+  details.section > summary{
+    list-style:none; cursor:pointer; padding:12px 16px; font-weight:600;
+  }
+  details.section > summary::-webkit-details-marker{display:none}
+  details.section[open] > summary{border-bottom:5px solid var(--border)}
+  ul{padding-left:18px}
+  ul.checklist{list-style:none; margin:0; padding:8px 12px}
+  .item{
+    display:flex; gap:10px; align-items:flex-start; background:transparent; padding:8px; border-radius:8px;
+  }
+  .item:hover{background-color:color-mix(in srgb, var(--brand) 8%, transparent)}
+  .item input[type="checkbox"]{flex-shrink:0; margin-top:3px; cursor:pointer}
+  .item label{cursor:pointer}
+  code{
+    background:color-mix(in srgb, var(--text) 8%, transparent); padding:2px 6px;
+    border-radius:4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size:.9em; word-break:break-word;
+  }
+
+  hr{border:0; border-top:1px solid var(--border); margin:16px 0}
+
+  /* Print: white background, expand all sections */
+  @media print{
+    header, .toolbar, nav.toc{display:none}
+    body{background:#fff; color:#000}
+    details.section{border:none}
+    details.section[open] > summary, details.section > summary{border:none}
+    details.section{page-break-inside:avoid}
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion:no-preference){
+    details.section{transition: box-shadow .2s ease}
+    details.section:hover{box-shadow:0 2px 20px color-mix(in srgb, var(--brand) 12%, transparent)}
+  }
+</style>
+</head>
+
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header>
+  <div class="toolbar">
+    <h1>Phishing: <a href="https://attack.mitre.org/techniques/T1566/" target="_blank" rel="noopener noreferrer">T1566</a></h1>
+    <input id="filter" type="search" placeholder="Filter checklist…" aria-label="Filter checklist items">
+    <button id="expand">Expand all</button>
+    <button id="collapse">Collapse all</button>
+    <button id="clear">Clear checks</button>
+  </div>
+</header>
+
+<main id="main" class="wrap" tabindex="-1">
+  <nav class="toc" aria-label="Table of contents">
+    <strong>Sections</strong>
+    <ul>
+      <li><a href="#sec-detection">Detection explanation</a></li>
+      <li><a href="#sec-email-metadata">Suspicious email characteristics & metadata anomalies</a></li>
+      <li><a href="#sec-attachments-ref">Malicious attachments and file types</a></li>
+      <li><a href="#sec-urls-ref">Malicious URLs and link analysis</a></li>
+      <li><a href="#sec-cred-harvest-ref">Credential harvesting & fake login pages</a></li>
+      <li><a href="#sec-macro-exec-ref">Office macro execution & document exploitation</a></li>
+      <li><a href="#sec-payload-ref">Post-click payload delivery & execution</a></li>
+      <li><a href="#sec-driveby-ref">Browser-based attacks & drive-by downloads</a></li>
+      <li><a href="#sec-collab-ref">Spearphishing via collaboration platforms</a></li>
+      <li><a href="#sec-forwarding-ref">Email forwarding rules & account compromise</a></li>
+      <li><a href="#sec-qr-ref">QR code phishing (Quishing)</a></li>
+      <li><a href="#sec-vishing-ref">Vishing (voice phishing) coordination</a></li>
+      <li><a href="#sec-social-ref">Social engineering & pretexting indicators</a></li>
+      <li><a href="#sec-mfa-ref">MFA bypass attempts</a></li>
+      <li><a href="#sec-checklist">Phishing Attack Investigation Checklist</a></li>
+    </ul>
+  </nav>
+
+  <!-- Reference sections, kept as readable content -->
+  <section aria-labelledby="sec-detection">
+    <h2 id="sec-detection">Detection Explanation</h2>
+    <p>Adversaries may send phishing messages to gain access to victim systems. Phishing involves sending fraudulent messages designed to trick users into revealing credentials, downloading malware, or performing actions that compromise security. This includes spearphishing attachments (T1566.001), spearphishing links (T1566.002), and spearphishing via service (T1566.003).</p>
+  </section>
+  <section aria-labelledby="sec-playbook">
+    <h2 id="sec-playbook">Detection areas</h2>
+  </section>
+  <details class="section" id="sec-email-metadata">
+    <summary>Suspicious email characteristics and metadata anomalies</summary>
+    <p><strong>Email Gateway Logs:</strong></p>
+    <ul>
+      <li>Sender Policy Framework (SPF) failures</li>
+      <li>DomainKeys Identified Mail (DKIM) validation failures</li>
+      <li>Domain-based Message Authentication, Reporting &amp; Conformance (DMARC) failures</li>
+      <li>Mismatched sender/reply-to addresses</li>
+      <li>Email from newly registered domains (&lt; 30 days old)</li>
+    </ul>
+    <p><strong>Email headers to analyze:</strong></p>
+    <ul>
+      <li><code>From:</code> vs <code>Reply-To:</code> discrepancies</li>
+      <li><code>Return-Path:</code> domain mismatches</li>
+      <li><code>Received:</code> headers showing suspicious routing</li>
+      <li><code>X-Originating-IP:</code> from unexpected geolocations</li>
+      <li><code>Message-ID:</code> format anomalies</li>
+    </ul>
+    <p><strong>Content patterns:</strong></p>
+    <ul>
+      <li>Domain typosquatting: <code>micros0ft.com</code>, <code>paypa1.com</code>, <code>goog1e.com</code></li>
+      <li>International character substitution (homograph attacks)</li>
+      <li>Generic greetings: “Dear Customer”, “Dear User”</li>
+      <li>Urgency indicators: “Urgent”, “Immediate action required”, “Account will be suspended”</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-attachments-ref">
+    <summary>Malicious attachments and file types</summary>
+    <p><strong>Suspicious file types:</strong></p>
+    <ul>
+      <li>Executables: <code>.exe</code>, <code>.dll</code>, <code>.scr</code>, <code>.pif</code>, <code>.com</code>, <code>.bat</code>, <code>.cmd</code></li>
+      <li>Office macros: <code>.doc</code>, <code>.docm</code>, <code>.xls</code>, <code>.xlsm</code>, <code>.ppt</code>, <code>.pptm</code> with macros enabled</li>
+      <li>Archives: <code>.zip</code>, <code>.rar</code>, <code>.7z</code>, <code>.iso</code>, <code>.img</code> (especially password-protected)</li>
+      <li>Scripts: <code>.vbs</code>, <code>.js</code>, <code>.jse</code>, <code>.wsf</code>, <code>.hta</code></li>
+      <li>Shortcuts: <code>.lnk</code> files</li>
+      <li>Double extensions: <code>invoice.pdf.exe</code>, <code>document.docx.js</code></li>
+    </ul>
+    <p><strong>Windows Event Logs (Post-Delivery):</strong></p>
+    <ul>
+      <li>Event ID 4688 (Process creation) - Attachment execution</li>
+      <li>Event ID 8003 (Windows Defender) - Malware detected in downloads</li>
+    </ul>
+    <p><strong>Sysmon:</strong></p>
+    <ul>
+      <li>Event ID 11 (File creation) - Attachments saved to disk in temporary folders, downloads, desktop</li>
+      <li>Event ID 1 (Process creation) - Office applications spawning unusual child processes</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-urls-ref">
+    <summary>Malicious URLs and link analysis</summary>
+    <p><strong>URL characteristics:</strong></p>
+    <ul>
+      <li>Shortened URLs: <code>bit.ly</code>, <code>tinyurl.com</code>, <code>goo.gl</code></li>
+      <li>Suspicious TLDs: <code>.tk</code>, <code>.ml</code>, <code>.ga</code>, <code>.cf</code>, <code>.gq</code>, <code>.xyz</code></li>
+      <li>Domain age (newly registered)</li>
+      <li>Misleading anchor text vs actual URL</li>
+      <li>URLs with embedded credentials: <code>http://user:pass@malicious.com</code></li>
+      <li>Obfuscated URLs: IP addresses, hex encoding, URL encoding</li>
+    </ul>
+    <p><strong>DNS Logs:</strong></p>
+    <ul>
+      <li>Queries to newly registered domains</li>
+      <li>Queries to domains with poor reputation</li>
+      <li>DGA (Domain Generation Algorithm) patterns</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-cred-harvest-ref">
+    <summary>Credential harvesting and fake login pages</summary>
+    <p><strong>Web Proxy Logs:</strong></p>
+    <ul>
+      <li>Access to spoofed login pages</li>
+      <li>HTTP POST to non-organizational authentication endpoints</li>
+      <li>Form submissions to suspicious domains</li>
+    </ul>
+    <p><strong>Browser indicators:</strong></p>
+    <ul>
+      <li>Missing HTTPS/TLS on login pages</li>
+      <li>Certificate warnings or invalid certificates</li>
+      <li>URL bar showing non-company domains for company logins</li>
+    </ul>
+    <p><strong>Behavioral patterns:</strong></p>
+    <ul>
+      <li>User accessing corporate login page from external link</li>
+      <li>Multiple credential entry attempts on fake pages</li>
+      <li>Immediate password change attempts after clicking email link</li>
+    </ul>
+    <p><strong>Authentication Logs:</strong></p>
+    <ul>
+      <li>Failed login attempts following phishing email timestamps</li>
+      <li>Successful logins from unusual locations after email interaction</li>
+      <li>Account compromise indicators shortly after email delivery</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-macro-exec-ref">
+    <summary>Office macro execution and document exploitation</summary>
+    <p><strong>Sysmon:</strong></p>
+    <ul>
+      <li>Event ID 1 (Process creation) - Office applications spawning child processes</li>
+    </ul>
+    <p><strong>Suspicious parent-child relationships:</strong></p>
+    <ul>
+      <li><code>winword.exe</code> → <code>powershell.exe</code>, <code>cmd.exe</code>, <code>wscript.exe</code>, <code>cscript.exe</code></li>
+      <li><code>excel.exe</code> → <code>mshta.exe</code>, <code>regsvr32.exe</code>, <code>rundll32.exe</code></li>
+      <li><code>powerpnt.exe</code> → Network connections or file downloads</li>
+      <li><code>outlook.exe</code> → Suspicious script execution</li>
+    </ul>
+    <p><strong>Windows Event Logs:</strong></p>
+    <ul>
+      <li>Event ID 4688 (Process creation) - Office macro spawning processes</li>
+      <li>Event ID 4104 (PowerShell script block logging) - Scripts launched from documents</li>
+    </ul>
+    <p><strong>Registry:</strong></p>
+    <ul>
+      <li><code>HKCU\Software\Microsoft\Office\[Version]\[Application]\Security\Trusted Documents</code> - Tracked documents with macros</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-payload-ref">
+    <summary>Post-click payload delivery and execution</summary>
+    <p><strong>Sysmon:</strong></p>
+    <ul>
+      <li>Event ID 3 (Network connection) - Browser or email client connections to suspicious IPs</li>
+      <li>Event ID 11 (File creation) - Downloads to temporary directories, user downloads folder</li>
+      <li>Event ID 1 (Process creation) - Execution of downloaded payloads</li>
+    </ul>
+    <p><strong>Download locations to monitor:</strong></p>
+    <ul>
+      <li><code>%USERPROFILE%\Downloads\</code></li>
+      <li><code>%USERPROFILE%\AppData\Local\Temp\</code></li>
+      <li><code>%TEMP%\</code></li>
+      <li>Browser cache directories</li>
+    </ul>
+    <p><strong>Network Logs:</strong></p>
+    <ul>
+      <li>HTTP/HTTPS downloads following email link clicks</li>
+      <li>Connections to file-sharing services: Dropbox, Google Drive, OneDrive from email links</li>
+      <li>Large file downloads from unknown sources</li>
+    </ul>
+    <p><strong>Web Gateway Logs:</strong></p>
+    <ul>
+      <li>File download type and size</li>
+      <li>Download from domains with poor reputation</li>
+      <li>Executable downloads</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-driveby-ref">
+    <summary>Browser-based attacks and drive-by downloads</summary>
+    <p><strong>Exploit indicators:</strong></p>
+    <ul>
+      <li>Attempts to access known CVE exploitation URLs</li>
+      <li>Browser plugin crashes or errors</li>
+      <li>Flash, Java, or ActiveX execution attempts</li>
+    </ul>
+    <p><strong>Sysmon:</strong></p>
+    <ul>
+      <li>Event ID 7 (Image/DLL loaded) - Suspicious DLL loads by browser processes</li>
+      <li>Event ID 8 (CreateRemoteThread) - Code injection into browser processes</li>
+    </ul>
+    <p><strong>Windows Event Logs:</strong></p>
+    <ul>
+      <li>Event ID 1001 (Application Error) - Browser crashes</li>
+      <li>Event ID 1000 (Application Error) - Plugin failures</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-collab-ref">
+    <summary>Spearphishing via collaboration platforms</summary>
+    <p><strong>Application Logs:</strong></p>
+    <ul>
+      <li>Microsoft Teams messages with external links</li>
+      <li>Slack direct messages from external users</li>
+      <li>LinkedIn InMail with suspicious links</li>
+      <li>WhatsApp/Signal messages with links</li>
+    </ul>
+    <p><strong>SaaS Security Logs:</strong></p>
+    <ul>
+      <li>Office 365 audit logs - External sharing events</li>
+      <li>Google Workspace logs - Drive file shares with external users</li>
+      <li>Collaboration platform API calls</li>
+    </ul>
+    <p><strong>Focus on:</strong></p>
+    <ul>
+      <li>Messages from newly added external contacts</li>
+      <li>Links to credential harvesting in chat platforms</li>
+      <li>File shares containing malicious documents</li>
+      <li>Direct messages with urgency or authority themes</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-forwarding-ref">
+    <summary>Email forwarding rules and account compromise indicators</summary>
+    <p><strong>Office 365/Exchange Logs:</strong></p>
+    <ul>
+      <li>Mailbox audit logs showing new forwarding rules</li>
+      <li>Event: <code>New-InboxRule</code>, <code>Set-InboxRule</code> PowerShell commands</li>
+      <li>Auto-forwarding to external domains</li>
+    </ul>
+    <p><strong>Suspicious rule characteristics:</strong></p>
+    <ul>
+      <li>Forward to external email addresses</li>
+      <li>Delete after forwarding (hiding evidence)</li>
+      <li>Rules created shortly after credential compromise</li>
+      <li>Rules with specific keyword triggers</li>
+    </ul>
+    <p><strong>Windows Event Logs (Exchange Servers):</strong></p>
+    <ul>
+      <li>Event ID 4688 (Process creation) - PowerShell creating mailbox rules</li>
+    </ul>
+    <p><strong>User behavior:</strong></p>
+    <ul>
+      <li>Unusual sent items or deleted items</li>
+      <li>Access from new devices/locations after phishing</li>
+      <li>Large volumes of email access in short timeframes</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-qr-ref">
+    <summary>QR code phishing (Quishing)</summary>
+    <p><strong>Email Gateway Logs:</strong></p>
+    <ul>
+      <li>Emails containing embedded images with QR codes</li>
+      <li>Low text-to-image ratio emails</li>
+    </ul>
+    <p><strong>Indicators:</strong></p>
+    <ul>
+      <li>QR codes in unexpected email contexts</li>
+      <li>Emails with only QR code images and minimal text</li>
+      <li>QR codes bypassing link scanning</li>
+    </ul>
+    <p><strong>Mobile device logs:</strong></p>
+    <ul>
+      <li>Mobile browser access to suspicious URLs</li>
+      <li>Camera app usage followed by browser activity</li>
+      <li>Authentication attempts from mobile devices to fake login pages</li>
+    </ul>
+    <p><strong>Detection approaches:</strong></p>
+    <ul>
+      <li>OCR/image analysis of email attachments</li>
+      <li>QR code decoding and URL reputation checking</li>
+      <li>Correlation of mobile device access with email delivery timing</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-vishing-ref">
+    <summary>Vishing (voice phishing) coordination</summary>
+    <p><strong>Phone System Logs:</strong></p>
+    <ul>
+      <li>VoIP call logs with spoofed caller IDs</li>
+      <li>High volume of calls to specific users</li>
+      <li>International calls claiming to be from local numbers</li>
+    </ul>
+    <p><strong>Email correlation:</strong></p>
+    <ul>
+      <li>Emails referencing phone calls or callbacks</li>
+      <li>Phone numbers in email signatures that don’t match company directory</li>
+      <li>Messages instructing to call specific numbers</li>
+    </ul>
+    <p><strong>Help Desk Logs:</strong></p>
+    <ul>
+      <li>Calls about suspicious voicemails</li>
+      <li>Users reporting unexpected authentication requests</li>
+      <li>MFA push notification bombing reports</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-social-ref">
+    <summary>Social engineering and pretexting indicators</summary>
+    <p><strong>Email content analysis:</strong></p>
+    <ul>
+      <li>Authority impersonation: CEO, CFO, IT department</li>
+      <li>Business Email Compromise (BEC) patterns</li>
+      <li>Invoice fraud attempts</li>
+      <li>W-2/tax information requests</li>
+      <li>Wire transfer requests</li>
+    </ul>
+    <p><strong>Contextual red flags:</strong></p>
+    <ul>
+      <li>Requests outside normal business processes</li>
+      <li>Pressure tactics and urgency</li>
+      <li>Requests to bypass security controls</li>
+      <li>Appeals to authority or fear</li>
+    </ul>
+    <p><strong>User reporting:</strong></p>
+    <ul>
+      <li>Phishing report button usage in email client</li>
+      <li>Help desk tickets about suspicious emails</li>
+      <li>Security awareness training simulations triggered</li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-mfa-ref">
+    <summary>Multi-factor authentication (MFA) bypass attempts</summary>
+    <p><strong>Authentication Logs:</strong></p>
+    <ul>
+      <li>MFA push notification spam (MFA fatigue attacks)</li>
+      <li>Multiple MFA denials followed by approval</li>
+      <li>MFA enrollment changes after suspicious email</li>
+    </ul>
+    <p><strong>Indicators:</strong></p>
+    <ul>
+      <li>Repeated MFA challenges to same user in short timeframe</li>
+      <li>MFA challenges at unusual times</li>
+      <li>New device registrations after phishing email</li>
+      <li>Password reset followed by MFA re-enrollment</li>
+    </ul>
+    <p><strong>Azure AD/Okta Logs:</strong></p>
+    <ul>
+      <li>Event: User denied MFA prompt (repeated)</li>
+      <li>Event: MFA method changed</li>
+      <li>Event: New device registered</li>
+    </ul>
+  </details>
+
+  <h2 id="sec-checklist">Phishing Attack Investigation Checklist</h2>
+
+  <!-- Checklist sections with unique IDs and labels -->
+  <details class="section" open id="sec-1">
+    <summary>1. Email Authentication and Metadata</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-001" type="checkbox"><label for="cb-001">Check email gateway logs for SPF, DKIM, and DMARC failures</label></li>
+      <li class="item"><input id="cb-002" type="checkbox"><label for="cb-002">Review <code>From:</code> vs <code>Reply-To:</code> discrepancies in email headers</label></li>
+      <li class="item"><input id="cb-003" type="checkbox"><label for="cb-003">Verify <code>Return-Path:</code> domain matches sender domain</label></li>
+      <li class="item"><input id="cb-004" type="checkbox"><label for="cb-004">Check <code>X-Originating-IP:</code> for unexpected geolocations</label></li>
+      <li class="item"><input id="cb-005" type="checkbox"><label for="cb-005">Identify emails from newly registered domains (&lt; 30 days old)</label></li>
+      <li class="item"><input id="cb-006" type="checkbox"><label for="cb-006">Look for domain typosquatting: <a href="http://micros0ft.com" target="_blank" rel="noopener noreferrer">micros0ft.com</a>, <a href="http://paypa1.com" target="_blank" rel="noopener noreferrer">paypa1.com</a>, <a href="http://goog1e.com" target="_blank" rel="noopener noreferrer">goog1e.com</a></label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-2">
+    <summary>2. Malicious Attachments</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-007" type="checkbox"><label for="cb-007">Search for suspicious file types: <code>.exe</code>, <code>.scr</code>, <code>.pif</code>, <code>.bat</code>, <code>.vbs</code>, <code>.js</code>, <code>.hta</code>, <code>.lnk</code></label></li>
+      <li class="item"><input id="cb-008" type="checkbox"><label for="cb-008">Check for Office files with macros: <code>.docm</code>, <code>.xlsm</code>, <code>.pptm</code></label></li>
+      <li class="item"><input id="cb-009" type="checkbox"><label for="cb-009">Identify password-protected archives: <code>.zip</code>, <code>.rar</code>, <code>.7z</code>, <code>.iso</code></label></li>
+      <li class="item"><input id="cb-010" type="checkbox"><label for="cb-010">Look for double extensions: <code>invoice.pdf.exe</code>, <code>document.docx.js</code></label></li>
+      <li class="item"><input id="cb-011" type="checkbox"><label for="cb-011">Review Event ID 8003/Windows Defender logs for malware detections</label></li>
+      <li class="item"><input id="cb-012" type="checkbox"><label for="cb-012">Check Sysmon Event ID 11 for attachments saved to Downloads, Temp, Desktop</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-3">
+    <summary>3. Malicious URLs and Links</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-013" type="checkbox"><label for="cb-013">Identify shortened URLs: <a href="http://bit.ly" target="_blank" rel="noopener noreferrer">bit.ly</a>, <a href="http://tinyurl.com" target="_blank" rel="noopener noreferrer">tinyurl.com</a>, <a href="http://goo.gl" target="_blank" rel="noopener noreferrer">goo.gl</a></label></li>
+      <li class="item"><input id="cb-014" type="checkbox"><label for="cb-014">Check for suspicious TLDs: <code>.tk</code>, <code>.ml</code>, <code>.ga</code>, <code>.cf</code>, <code>.gq</code>, <code>.xyz</code></label></li>
+      <li class="item"><input id="cb-015" type="checkbox"><label for="cb-015">Review DNS logs for queries to newly registered or poor reputation domains</label></li>
+      <li class="item"><input id="cb-016" type="checkbox"><label for="cb-016">Look for obfuscated URLs: IP addresses, hex encoding, embedded credentials</label></li>
+      <li class="item"><input id="cb-017" type="checkbox"><label for="cb-017">Verify anchor text matches actual URL destination</label></li>
+      <li class="item"><input id="cb-018" type="checkbox"><label for="cb-018">Check web proxy logs for access to spoofed login pages</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-4">
+    <summary>4. Credential Harvesting Indicators</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-019" type="checkbox"><label for="cb-019">Review web proxy logs for HTTP POST to non-organizational authentication endpoints</label></li>
+      <li class="item"><input id="cb-020" type="checkbox"><label for="cb-020">Check for form submissions to suspicious domains</label></li>
+      <li class="item"><input id="cb-021" type="checkbox"><label for="cb-021">Identify missing HTTPS/TLS or invalid certificates on login pages</label></li>
+      <li class="item"><input id="cb-022" type="checkbox"><label for="cb-022">Correlate failed/successful logins with phishing email timestamps</label></li>
+      <li class="item"><input id="cb-023" type="checkbox"><label for="cb-023">Look for successful logins from unusual locations after email interaction</label></li>
+      <li class="item"><input id="cb-024" type="checkbox"><label for="cb-024">Monitor for immediate password change attempts after link clicks</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-5">
+    <summary>5. Office Macro Execution</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-025" type="checkbox"><label for="cb-025">Check Sysmon Event ID 1 for Office apps spawning child processes</label></li>
+      <li class="item"><input id="cb-026" type="checkbox"><label for="cb-026">Identify suspicious chains: winword.exe → powershell.exe, cmd.exe, wscript.exe</label></li>
+      <li class="item"><input id="cb-027" type="checkbox"><label for="cb-027">Review <code>excel.exe</code> → <code>mshta.exe</code>, <code>regsvr32.exe</code>, <code>rundll32.exe</code> patterns</label></li>
+      <li class="item"><input id="cb-028" type="checkbox"><label for="cb-028">Check Event ID 4688/4104 for Office macro spawning scripts</label></li>
+      <li class="item"><input id="cb-029" type="checkbox"><label for="cb-029">Review HKCU…\Office…\Security\Trusted Documents registry for macro-enabled files</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-6">
+    <summary>6. Payload Downloads and Execution</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-030" type="checkbox"><label for="cb-030">Monitor Sysmon Event ID 3 for browser/email client connections to suspicious IPs</label></li>
+      <li class="item"><input id="cb-031" type="checkbox"><label for="cb-031">Check Sysmon Event ID 11 for files created in <code>%USERPROFILE%\Downloads</code>, <code>%TEMP%\</code></label></li>
+      <li class="item"><input id="cb-032" type="checkbox"><label for="cb-032">Review Sysmon Event ID 1 for execution of downloaded payloads</label></li>
+      <li class="item"><input id="cb-033" type="checkbox"><label for="cb-033">Identify large file downloads from unknown sources in web gateway logs</label></li>
+      <li class="item"><input id="cb-034" type="checkbox"><label for="cb-034">Check for connections to file-sharing services (Dropbox, Google Drive) from email links</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-7">
+    <summary>7. Collaboration Platform Phishing</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-035" type="checkbox"><label for="cb-035">Review Microsoft Teams/Slack logs for external messages with links</label></li>
+      <li class="item"><input id="cb-036" type="checkbox"><label for="cb-036">Check Office 365 audit logs for external file sharing events</label></li>
+      <li class="item"><input id="cb-037" type="checkbox"><label for="cb-037">Identify messages from newly added external contacts</label></li>
+      <li class="item"><input id="cb-038" type="checkbox"><label for="cb-038">Look for direct messages with urgency or authority themes</label></li>
+      <li class="item"><input id="cb-039" type="checkbox"><label for="cb-039">Monitor Google Workspace logs for Drive shares with external users</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-8">
+    <summary>8. Email Forwarding Rules</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-040" type="checkbox"><label for="cb-040">Check mailbox audit logs for <code>New-InboxRule</code> or <code>Set-InboxRule</code> commands</label></li>
+      <li class="item"><input id="cb-041" type="checkbox"><label for="cb-041">Identify auto-forwarding rules to external domains</label></li>
+      <li class="item"><input id="cb-042" type="checkbox"><label for="cb-042">Look for rules that delete after forwarding</label></li>
+      <li class="item"><input id="cb-043" type="checkbox"><label for="cb-043">Review rules created shortly after credential compromise</label></li>
+      <li class="item"><input id="cb-044" type="checkbox"><label for="cb-044">Monitor Event ID 4688 for PowerShell creating mailbox rules</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-9">
+    <summary>9. MFA Bypass Attempts</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-045" type="checkbox"><label for="cb-045">Check authentication logs for MFA push notification spam (multiple rapid attempts)</label></li>
+      <li class="item"><input id="cb-046" type="checkbox"><label for="cb-046">Identify multiple MFA denials followed by approval</label></li>
+      <li class="item"><input id="cb-047" type="checkbox"><label for="cb-047">Review MFA enrollment changes after suspicious emails</label></li>
+      <li class="item"><input id="cb-048" type="checkbox"><label for="cb-048">Look for new device registrations following phishing attempts</label></li>
+      <li class="item"><input id="cb-049" type="checkbox"><label for="cb-049">Monitor Azure AD/Okta for MFA method changes or repeated denials</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-10">
+    <summary>10. Social Engineering Patterns</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-050" type="checkbox"><label for="cb-050">Search for authority impersonation: CEO, CFO, IT department in sender names</label></li>
+      <li class="item"><input id="cb-051" type="checkbox"><label for="cb-051">Identify Business Email Compromise (BEC) patterns: wire transfers, W-2 requests</label></li>
+      <li class="item"><input id="cb-052" type="checkbox"><label for="cb-052">Look for urgency indicators: “Urgent”, “Immediate action”, “Account suspended”</label></li>
+      <li class="item"><input id="cb-053" type="checkbox"><label for="cb-053">Check for generic greetings: “Dear Customer”, “Dear User”</label></li>
+      <li class="item"><input id="cb-054" type="checkbox"><label for="cb-054">Review help desk tickets for phishing reports or suspicious email inquiries</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="sec-11">
+    <summary>11. Post-Compromise Activity</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-055" type="checkbox"><label for="cb-055">Timeline: Email delivery → Link click → Credential use from attacker IP</label></li>
+      <li class="item"><input id="cb-056" type="checkbox"><label for="cb-056">Correlate attachment download → Process execution → C2 communication</label></li>
+      <li class="item"><input id="cb-057" type="checkbox"><label for="cb-057">Check for account compromise indicators shortly after email delivery</label></li>
+      <li class="item"><input id="cb-058" type="checkbox"><label for="cb-058">Review failed login attempts following phishing email timestamps</label></li>
+      <li class="item"><input id="cb-059" type="checkbox"><label for="cb-059">Monitor for lateral movement or data access after email interaction</label></li>
+    </ul>
+  </details>
+
+</main>
+
+<script>
+/* --- Simple UX helpers --- */
+
+// Persist checkboxes
+const STORAGE_KEY = 't1566_checks_v1';
+function loadChecks(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    for (const [id, val] of Object.entries(saved)){
+      const el = document.getElementById(id);
+      if (el && el.type === 'checkbox') el.checked = !!val;
+    }
+  }catch(e){ /* ignore parse errors */ }
+}
+function saveChecks(){
+  const data = {};
+  document.querySelectorAll('input[type="checkbox"][id]').forEach(cb => data[cb.id] = cb.checked);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+document.addEventListener('change', e => {
+  if (e.target.matches('input[type="checkbox"]')) saveChecks();
+});
+loadChecks();
+
+// Filter only checklist items
+const filter = document.getElementById('filter');
+filter?.addEventListener('input', () => {
+  const q = filter.value.trim().toLowerCase();
+  document.querySelectorAll('.checklist .item').forEach(li => {
+    const txt = li.textContent.toLowerCase();
+    li.style.display = txt.includes(q) ? '' : 'none';
+  });
+  // Auto-expand sections if something inside matches
+  document.querySelectorAll('details.section').forEach(d => {
+    const hasVisible = d.querySelector('.checklist .item:not([style*="display: none"])');
+    if (q && hasVisible) d.open = true;
+  });
+});
+
+// Expand/collapse
+const expandBtn = document.getElementById('expand');
+const collapseBtn = document.getElementById('collapse');
+expandBtn?.addEventListener('click', () => document.querySelectorAll('details.section').forEach(d => d.open = true));
+collapseBtn?.addEventListener('click', () => document.querySelectorAll('details.section').forEach(d => d.open = false));
+
+// Clear checks
+document.getElementById('clear')?.addEventListener('click', () => {
+  document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  saveChecks();
+});
+
+// Safer external links already have target+rel in markup.
+// Optional: ensure dynamically added links get rel too (not needed now).
+
+</script>
+</body>
+</html>

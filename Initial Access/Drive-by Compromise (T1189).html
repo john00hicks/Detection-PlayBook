@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Drive-by Compromise (T1189)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Drive-by Compromise: <a href="https://attack.mitre.org/techniques/T1189/">T1189</a></h1>
+<h2>Detection Explanation</h2>
+<p>Drive-by Compromise involves adversaries gaining access to systems through users visiting malicious or compromised websites. This technique enables attackers to exploit browser vulnerabilities, browser plugin weaknesses, or social engineering to execute code on victim systems without requiring intentional user action beyond browsing to a webpage. Drive-by compromise is commonly used during the initial access phase and represents a significant threat because it requires minimal user interaction and can affect many users visiting popular compromised websites.</p>
+<p>Attackers use drive-by compromise because it provides broad access to potential victims through legitimate websites, exploits trust users place in familiar sites, leverages vulnerabilities in ubiquitous software (browsers, Flash, Java, PDF readers), and can deliver malware silently without user awareness. Common methods include exploit kits (like RIG, Magnitude, or Neutrino) that test for multiple vulnerabilities, watering hole attacks targeting specific user populations, malvertising campaigns serving exploits through legitimate ad networks, and compromised legitimate websites injected with malicious JavaScript or iframes redirecting to exploit servers.</p>
+<p>Successful drive-by compromise grants adversaries initial code execution on victim systems, often with the privileges of the browser process, enabling them to download and execute malware, establish command and control, escalate privileges, and begin reconnaissance. This technique is particularly dangerous because it targets users during normal web browsing activity, requires no user action beyond visiting a page, can affect many victims through single compromised sites, and leverages legitimate sites users trust. The impact includes widespread malware distribution, targeted attacks on specific organizations (watering holes), credential theft, ransomware deployment, and establishment of persistent access across many systems.</p>
+<p>Detection requires monitoring for browser exploitation indicators, tracking downloads and execution from browser processes, identifying suspicious JavaScript execution patterns, detecting exploit kit communication patterns, and correlating web activity with subsequent malicious behavior. Organizations should monitor browser crash patterns indicating exploitation attempts, track unusual child processes spawned from browsers, analyze network traffic for exploit kit indicators, and alert on browser-initiated downloads followed by immediate execution.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>Browser process crashes and abnormal terminations</li>
+<li>Suspicious child processes spawned from browsers</li>
+<li>Browser downloads immediately followed by execution</li>
+<li>Exploit kit network traffic patterns and indicators</li>
+<li>JavaScript obfuscation and suspicious script execution</li>
+<li>Browser plugin crashes (Flash, Java, PDF readers)</li>
+<li>Malicious iframe injection and redirection chains</li>
+<li>Heap spray and shellcode patterns in browser memory</li>
+<li>Browser-initiated file writes to suspicious locations</li>
+<li>Exploit mitigation triggers (DEP, ASLR, EMET violations)</li>
+</ol>
+<hr>
+<h3>1. Browser Process Crashes and Abnormal Terminations</h3>
+<p><strong>Windows Event Logs (Application):</strong></p>
+<ul>
+<li>Event ID 1000 (Application Error) - Browser crashes</li>
+<li>Event ID 1001 (Windows Error Reporting) - Crash reports</li>
+<li>Key fields: <code>Faulting application</code>, <code>Exception code</code>, <code>Faulting module</code></li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 1001 (BugCheck) - System crashes from browser exploitation</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Browser restart after crash</li>
+<li>Event ID 5 (Process terminated) - Browser abnormal termination</li>
+<li>Event ID 10 (ProcessAccess) - Memory access preceding crashes</li>
+</ul>
+<p><strong>Browser Crash Indicators:</strong></p>
+<ul>
+<li>Chrome: <code>chrome.exe</code> crash dumps in <code>%LOCALAPPDATA%\Google\Chrome\User Data\Crashpad\</code></li>
+<li>Firefox: <code>firefox.exe</code> crash reports in <code>%APPDATA%\Mozilla\Firefox\Crash Reports\</code></li>
+<li>Edge: <code>msedge.exe</code> crashes</li>
+<li>Internet Explorer: <code>iexplore.exe</code> crashes</li>
+</ul>
+<p><strong>Exception Codes:</strong></p>
+<ul>
+<li><code>0xc0000005</code> - Access violation (common in exploitation)</li>
+<li><code>0xc0000409</code> - Stack buffer overrun detected</li>
+<li><code>0xc000001d</code> - Illegal instruction</li>
+<li><code>0xc0000374</code> - Heap corruption</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Repeated browser crashes in short timeframe</li>
+<li>Crashes with specific exception codes indicating exploitation</li>
+<li>Browser crashes followed immediately by new process creation</li>
+<li>Crash patterns across multiple systems (widespread exploitation)</li>
+<li>Crashes correlating with visits to specific URLs</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 1000 showing browser crashes with exception code <code>0xc0000005</code> (access violation)</li>
+<li>Multiple browser crashes within 5-10 minute window from same user or system</li>
+<li>Crashes in browser components: <code>ntdll.dll</code>, <code>kernel32.dll</code>, rendering engines</li>
+<li>Browser crash immediately followed by <code>cmd.exe</code>, <code>powershell.exe</code>, or unknown executable creation</li>
+<li>Faulting module showing browser plugin DLLs: Flash, Java, PDF reader plugins</li>
+<li>Crash patterns affecting multiple users visiting same website or domain</li>
+<li>Event ID 1001 Windows Error Reporting for browsers with exploitation signatures</li>
+<li>Browser process termination (Event ID 5) followed immediately by suspicious process creation</li>
+<li>Crash dump files created in <code>%LOCALAPPDATA%</code> or <code>%TEMP%</code> showing exploit artifacts</li>
+<li>Exception addresses pointing to heap spray regions or ROP gadgets</li>
+</ul>
+<hr>
+<h3>2. Suspicious Child Processes Spawned from Browsers</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Processes spawned from browsers</li>
+<li>Key fields: <code>ParentImage</code>, <code>Image</code>, <code>CommandLine</code>, <code>IntegrityLevel</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Process creation with browser parent</li>
+<li>Key fields: <code>ParentProcessName</code>, <code>NewProcessName</code>, <code>ProcessCommandLine</code></li>
+</ul>
+<p><strong>Browser Processes:</strong></p>
+<ul>
+<li>Chrome: <code>chrome.exe</code></li>
+<li>Firefox: <code>firefox.exe</code></li>
+<li>Edge: <code>msedge.exe</code></li>
+<li>Internet Explorer: <code>iexplore.exe</code></li>
+<li>Safari: <code>safari.exe</code></li>
+</ul>
+<p><strong>Legitimate vs. Suspicious Child Processes:</strong></p>
+<ul>
+<li>Legitimate: Helper processes, updaters, specific utilities</li>
+<li>Suspicious: Shells, scripting engines, system utilities</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Browsers spawning command shells or scripting engines</li>
+<li>System utilities launched from browser processes</li>
+<li>Executables from temporary or user directories</li>
+<li>Multiple suspicious processes in sequence</li>
+<li>Command-line parameters indicating malicious activity</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>chrome.exe</code>, <code>firefox.exe</code>, or <code>msedge.exe</code> spawning <code>cmd.exe</code>, <code>powershell.exe</code>, <code>wscript.exe</code></li>
+<li>Browsers launching system utilities: <code>mshta.exe</code>, <code>rundll32.exe</code>, <code>regsvr32.exe</code>, <code>certutil.exe</code></li>
+<li>Parent process <code>iexplore.exe</code> with child processes from <code>%TEMP%</code> or <code>%APPDATA%</code></li>
+<li>Command lines showing encoded commands: <code>powershell.exe -enc</code>, <code>cmd.exe /c &lt;base64&gt;</code></li>
+<li>Browsers spawning <code>net.exe</code>, <code>whoami.exe</code>, <code>ipconfig.exe</code> (reconnaissance)</li>
+<li>Multiple suspicious child processes in sequence: browser → cmd → powershell → malware</li>
+<li>Processes spawned with different integrity levels (privilege escalation indicators)</li>
+<li>Browser launching executables from <code>%TEMP%\Low\</code> or browser cache directories</li>
+<li>Immediate execution of recently downloaded files without user interaction</li>
+<li>Browser processes spawning LOLBins (Living Off the Land Binaries)</li>
+</ul>
+<hr>
+<h3>3. Browser Downloads Immediately Followed by Execution</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File created) - Downloaded files</li>
+<li>Event ID 1 (Process creation) - File execution</li>
+<li>Event ID 15 (File stream created) - Zone.Identifier (Mark of the Web)</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4663 (Access attempted to object) - File creation in downloads</li>
+<li>Event ID 4688 (Process creation) - Downloaded file execution</li>
+</ul>
+<p><strong>Browser Download Locations:</strong></p>
+<ul>
+<li>Chrome: <code>%USERPROFILE%\Downloads\</code>, <code>%LOCALAPPDATA%\Google\Chrome\User Data\Default\Cache\</code></li>
+<li>Firefox: <code>%USERPROFILE%\Downloads\</code>, <code>%LOCALAPPDATA%\Mozilla\Firefox\Profiles\*\cache2\</code></li>
+<li>Edge: <code>%USERPROFILE%\Downloads\</code>, <code>%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\Cache\</code></li>
+</ul>
+<p><strong>Correlation Pattern:</strong></p>
+<ul>
+<li>File creation (Event ID 11) → Immediate execution (Event ID 1) within seconds/minutes</li>
+<li>Browser process network activity → File download → Execution without user interaction</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Downloaded files executed within minutes of creation</li>
+<li>Executables downloaded to temporary or cache directories</li>
+<li>Automatic execution without user save/open dialog</li>
+<li>Missing or manipulated Zone.Identifier streams</li>
+<li>Downloads followed by process chains indicating compromise</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>File created (Event ID 11) in Downloads or cache directory followed within 30 seconds by Event ID 1 execution</li>
+<li>Executables downloaded to <code>%TEMP%</code>, browser cache, or <code>%APPDATA%</code> with immediate execution</li>
+<li>Missing Zone.Identifier alternate data stream (Mark of the Web bypass)</li>
+<li>Zone.Identifier showing <code>ZoneId=2</code> (trusted sites) for suspicious downloads</li>
+<li>File downloads with suspicious names: random characters, system-like names, double extensions</li>
+<li>Downloads immediately executed without user “Open” action (automatic exploitation)</li>
+<li>Browser network connection to suspicious IP → File download → Execution chain</li>
+<li>Multiple files downloaded and executed sequentially (staged payload delivery)</li>
+<li>Downloaded files with no digital signature or invalid signatures executing immediately</li>
+<li>Parent process showing browser spawning downloaded executable directly</li>
+</ul>
+<hr>
+<h3>4. Exploit Kit Network Traffic Patterns and Indicators</h3>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Proxy logs - Exploit kit landing pages and redirections</li>
+<li>DNS logs - Exploit kit domain resolution patterns</li>
+<li>Firewall logs - Connections to exploit kit infrastructure</li>
+<li>IDS/IPS - Exploit kit signatures and patterns</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Browser connections to exploit kit domains</li>
+<li>Event ID 22 (DNS query) - DNS queries for exploit kit domains</li>
+</ul>
+<p><strong>Exploit Kit Indicators:</strong></p>
+<ul>
+<li>Gate/landing page patterns</li>
+<li>Multiple HTTP redirections</li>
+<li>Obfuscated JavaScript/Flash/Java content</li>
+<li>Specific URL patterns and file extensions</li>
+<li>Payload delivery mechanisms</li>
+</ul>
+<p><strong>Common Exploit Kits:</strong></p>
+<ul>
+<li>RIG Exploit Kit</li>
+<li>Magnitude Exploit Kit</li>
+<li>Fallout Exploit Kit</li>
+<li>GrandSoft Exploit Kit</li>
+<li>Purple Fox Exploit Kit</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Redirection chains leading to exploit delivery</li>
+<li>HTTP responses with heavily obfuscated content</li>
+<li>Connections to known exploit kit infrastructure</li>
+<li>URL patterns matching exploit kit signatures</li>
+<li>Flash, Java, or PDF file requests with suspicious parameters</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Multiple HTTP 302 redirects in sequence: legitimate site → compromised site → exploit kit gate</li>
+<li>URLs with random-looking parameters: <code>?id=MTIzNDU2Nzg=</code>, <code>?key=a3f7d9e2</code></li>
+<li>HTTP responses containing heavily obfuscated JavaScript (multiple encoding layers)</li>
+<li>Connections to recently registered domains or domains with poor reputation</li>
+<li>URL patterns matching exploit kits: <code>/gate.php</code>, <code>/landing.php</code>, <code>/main.php</code>, <code>/keitaro/</code></li>
+<li>HTTP requests for Flash files (<code>.swf</code>) from suspicious domains</li>
+<li>Java applet downloads from untrusted sources</li>
+<li>PDF file requests with exploit kit fingerprinting parameters</li>
+<li>Network traffic to IP addresses hosting multiple exploit kit domains</li>
+<li>User-agent based filtering (exploit kits serve different content based on UA)</li>
+</ul>
+<hr>
+<h3>5. JavaScript Obfuscation and Suspicious Script Execution</h3>
+<p><strong>Browser Developer Tools:</strong></p>
+<ul>
+<li>Console errors from malicious scripts</li>
+<li>Network activity showing script loads</li>
+<li>JavaScript debugger showing obfuscation</li>
+</ul>
+<p><strong>Network Traffic Analysis:</strong></p>
+<ul>
+<li>HTTP responses containing heavily obfuscated JavaScript</li>
+<li>Script content with multiple encoding layers</li>
+<li>Eval chains and dynamic code execution</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - JavaScript file downloads</li>
+<li>Event ID 22 (DNS query) - Script source domain resolution</li>
+</ul>
+<p><strong>Obfuscation Techniques:</strong></p>
+<ul>
+<li>Multiple encoding layers (base64, hex, unicode escape)</li>
+<li>Variable name randomization</li>
+<li>String concatenation and manipulation</li>
+<li>Eval chains: <code>eval(unescape(...))</code></li>
+<li>Document.write with encoded content</li>
+<li>Array-based obfuscation</li>
+</ul>
+<p><strong>JavaScript Patterns:</strong></p>
+<ul>
+<li>Heap spray techniques</li>
+<li>ROP chain preparation</li>
+<li>Shellcode embedding</li>
+<li>Exploit triggering code</li>
+<li>Anti-debugging techniques</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Scripts with excessive obfuscation</li>
+<li>JavaScript downloading or executing additional code</li>
+<li>Heap spray patterns in scripts</li>
+<li>Browser plugin exploitation attempts</li>
+<li>Fingerprinting and profiling scripts</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>JavaScript with multiple nested <code>eval()</code> calls</li>
+<li>Scripts using <code>unescape()</code>, <code>String.fromCharCode()</code> extensively</li>
+<li>Long base64 or hex-encoded strings in JavaScript</li>
+<li>Array initialization with large blocks of NOP sleds or shellcode patterns</li>
+<li>Scripts detecting browser version, plugins, and OS (fingerprinting)</li>
+<li>Obfuscated variable names: <code>var _0x1a2b3c</code>, single-character variables</li>
+<li>Dynamic iframe creation pointing to external domains</li>
+<li>JavaScript redirecting to different sites based on system configuration</li>
+<li>XOR or other custom encoding/decoding routines in scripts</li>
+<li>Scripts with anti-debugging or VM detection code</li>
+</ul>
+<hr>
+<h3>6. Browser Plugin Crashes (Flash, Java, PDF Readers)</h3>
+<p><strong>Windows Event Logs (Application):</strong></p>
+<ul>
+<li>Event ID 1000 (Application Error) - Plugin crashes</li>
+<li>Event ID 1001 (Windows Error Reporting) - Plugin crash reports</li>
+<li>Key fields: <code>Faulting application</code>, <code>Faulting module</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Plugin process creation</li>
+<li>Event ID 5 (Process terminated) - Plugin abnormal termination</li>
+</ul>
+<p><strong>Browser Plugin Processes:</strong></p>
+<ul>
+<li>Flash: <code>FlashPlayerPlugin*.exe</code>, <code>plugin-container.exe</code> (Firefox)</li>
+<li>Java: <code>jp2launcher.exe</code>, <code>javaw.exe</code>, <code>java.exe</code></li>
+<li>PDF: <code>AcroRd32.exe</code>, <code>RdrCEF.exe</code> (Acrobat Reader)</li>
+</ul>
+<p><strong>Common Plugin Vulnerabilities:</strong></p>
+<ul>
+<li>Flash: Use-after-free, type confusion, integer overflow</li>
+<li>Java: Deserialization, sandbox escape, arbitrary code execution</li>
+<li>PDF: JavaScript execution, buffer overflow, object confusion</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Plugin crashes with exploitation indicators</li>
+<li>Repeated plugin crashes from specific websites</li>
+<li>Plugin crashes followed by malicious activity</li>
+<li>Exception codes indicating memory corruption</li>
+<li>Plugin processes spawning suspicious child processes</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Flash Player crashes with exception code <code>0xc0000005</code> (access violation)</li>
+<li>Java plugin crashes immediately after visiting specific websites</li>
+<li>PDF reader crashes when opening files from browser</li>
+<li>Multiple plugin crashes in short timeframe across different users</li>
+<li>Plugin crash followed by browser spawning <code>cmd.exe</code> or <code>powershell.exe</code></li>
+<li>Faulting module showing plugin DLLs with known vulnerabilities</li>
+<li>Plugin processes spawning unexpected child processes after crash</li>
+<li>Crash dump analysis showing heap spray, ROP chains, or shellcode</li>
+<li>Plugin crashes correlating with connections to known exploit kit infrastructure</li>
+<li>Repeated crashes of same plugin component across multiple systems</li>
+</ul>
+<hr>
+<h3>7. Malicious Iframe Injection and Redirection Chains</h3>
+<p><strong>Network Traffic Analysis:</strong></p>
+<ul>
+<li>Proxy logs - HTTP responses with injected iframes</li>
+<li>Content inspection - Iframe tags in unexpected pages</li>
+<li>DNS logs - Iframe source domain resolution</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Connections to iframe sources</li>
+<li>Event ID 22 (DNS query) - DNS resolution for redirect domains</li>
+</ul>
+<p><strong>Web Server Logs (if monitoring compromised sites):</strong></p>
+<ul>
+<li>Unexpected iframe tags in page content</li>
+<li>Modified page sizes or checksums</li>
+<li>Unauthorized file modifications</li>
+</ul>
+<p><strong>Iframe Injection Patterns:</strong></p>
+<ul>
+<li>Hidden iframes: <code>width=&quot;0&quot; height=&quot;0&quot;</code> or <code>style=&quot;display:none&quot;</code></li>
+<li>Iframes with suspicious source URLs</li>
+<li>Multiple redirect layers</li>
+<li>Dynamically created iframes via JavaScript</li>
+</ul>
+<p><strong>Redirection Chain Indicators:</strong></p>
+<ul>
+<li>HTTP 302 redirects in sequence</li>
+<li>Meta refresh tags</li>
+<li>JavaScript-based redirects</li>
+<li>Multiple domain hops</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Legitimate sites serving injected iframes</li>
+<li>Iframe sources pointing to suspicious domains</li>
+<li>Hidden or zero-pixel iframes</li>
+<li>Redirection chains to exploit kit infrastructure</li>
+<li>Dynamic iframe creation via obfuscated JavaScript</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Trusted websites returning content with <code>&lt;iframe&gt;</code> tags not in original design</li>
+<li>Iframe tags with <code>width=&quot;0&quot;</code> or <code>height=&quot;0&quot;</code> attributes (hidden from users)</li>
+<li>Iframe sources pointing to recently registered domains or suspicious TLDs</li>
+<li>Multiple HTTP redirects: trusted site → compromised site → exploit kit gate → exploit delivery</li>
+<li>JavaScript dynamically creating iframes: <code>document.createElement('iframe')</code></li>
+<li>Iframe sources with obfuscated or encoded URLs</li>
+<li>Meta refresh tags redirecting to external domains: <code>&lt;meta http-equiv=&quot;refresh&quot; content=&quot;0;url=...&quot;&gt;</code></li>
+<li>Redirection chains with random-looking domain names</li>
+<li>DNS queries showing progression through multiple domains in seconds</li>
+<li>Network connections to iframe sources immediately causing browser crashes or suspicious activity</li>
+</ul>
+<hr>
+<h3>8. Heap Spray and Shellcode Patterns in Browser Memory</h3>
+<p><strong>Endpoint Detection and Response (EDR):</strong></p>
+<ul>
+<li>Memory scanning for heap spray patterns</li>
+<li>Shellcode detection in browser process memory</li>
+<li>NOP sled identification</li>
+<li>ROP chain detection</li>
+</ul>
+<p><strong>Windows Event Logs (Application):</strong></p>
+<ul>
+<li>Event ID 1000 with memory addresses in heap spray regions</li>
+</ul>
+<p><strong>Memory Analysis Indicators:</strong></p>
+<ul>
+<li>Large repeated memory allocations</li>
+<li>NOP sleds (0x90 repeated)</li>
+<li>Shellcode signatures</li>
+<li>ROP gadget chains</li>
+<li>Executable memory in unexpected regions</li>
+</ul>
+<p><strong>Heap Spray Techniques:</strong></p>
+<ul>
+<li>JavaScript heap spraying</li>
+<li>Flash Vector heap spraying</li>
+<li>Java array heap spraying</li>
+<li>Typed array allocation patterns</li>
+</ul>
+<p><strong>Shellcode Characteristics:</strong></p>
+<ul>
+<li>Position-independent code (PIC)</li>
+<li>API resolution via PEB walking</li>
+<li>Egg hunters</li>
+<li>Encoded or obfuscated shellcode</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Browser memory containing spray patterns</li>
+<li>Executable memory regions with shellcode</li>
+<li>Memory allocations preceding exploitation</li>
+<li>ROP chains in browser memory</li>
+<li>Post-exploitation shellcode execution</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Browser memory containing large blocks of repeated patterns (NOP sleds: 0x90909090)</li>
+<li>Heap spray patterns: repeated addresses like 0x0c0c0c0c, 0x20202020</li>
+<li>Memory regions with PAGE_EXECUTE_READWRITE permissions in browser processes</li>
+<li>Shellcode signatures detected in browser memory: GetProcAddress resolution, PEB walking</li>
+<li>ROP gadget chains in memory preceding exploitation</li>
+<li>Memory allocations of specific sizes commonly used in heap sprays (several MB)</li>
+<li>JavaScript or Flash allocating large arrays or strings</li>
+<li>Memory containing egg hunters or shellcode stubs</li>
+<li>Executable code in heap regions not backed by legitimate modules</li>
+<li>Post-exploitation: browser memory containing Metasploit, Cobalt Strike, or custom shellcode patterns</li>
+</ul>
+<hr>
+<h3>9. Browser-Initiated File Writes to Suspicious Locations</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File created) - Files created by browser processes</li>
+<li>Key fields: <code>Image</code>, <code>TargetFilename</code>, <code>User</code></li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4663 (Access attempted to object) - File writes by browsers</li>
+<li>Event ID 4656 (Handle to object requested) - File handles from browsers</li>
+</ul>
+<p><strong>Suspicious File Locations:</strong></p>
+<ul>
+<li><code>%TEMP%</code> - Temporary directory</li>
+<li><code>%APPDATA%\Local\Temp\</code> - Local temporary app data</li>
+<li><code>%LOCALAPPDATA%\Temp\</code> - Local temporary data</li>
+<li>Startup folders - Persistence locations</li>
+<li>System directories - Privilege escalation attempts</li>
+</ul>
+<p><strong>File Types:</strong></p>
+<ul>
+<li>Executables: <code>.exe</code>, <code>.dll</code>, <code>.scr</code></li>
+<li>Scripts: <code>.ps1</code>, <code>.vbs</code>, <code>.js</code>, <code>.bat</code></li>
+<li>Archives: <code>.zip</code>, <code>.rar</code>, <code>.7z</code> (containing malware)</li>
+<li>Office documents with macros</li>
+<li>Shortcut files: <code>.lnk</code> (for persistence)</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Browser processes writing executables to disk</li>
+<li>Files written to startup or persistence locations</li>
+<li>Multiple files written in sequence (staged delivery)</li>
+<li>Files written to system directories</li>
+<li>File writes followed immediately by execution</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Browser processes creating <code>.exe</code>, <code>.dll</code>, or <code>.scr</code> files in <code>%TEMP%</code> or <code>%APPDATA%</code></li>
+<li>Files written to startup folders: <code>%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\</code></li>
+<li>Browser writing files to system directories: <code>C:\Windows\</code>, <code>C:\Windows\System32\</code></li>
+<li>Multiple files created sequentially: dropper → payload → configuration</li>
+<li>File creation in browser cache directories that are executables rather than typical cache files</li>
+<li>Files written with system-like names: <code>svchost.exe</code>, <code>explorer.exe</code>, <code>update.exe</code></li>
+<li>Browser creating <code>.lnk</code> (shortcut) files in startup locations</li>
+<li>Files written to scheduled task directories: <code>C:\Windows\System32\Tasks\</code></li>
+<li>File writes to <code>%APPDATA%\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\</code></li>
+<li>Browser writing files then immediately another process (not browser) accessing them</li>
+</ul>
+<hr>
+<h3>10. Exploit Mitigation Triggers (DEP, ASLR, EMET Violations)</h3>
+<p><strong>Windows Event Logs (Application):</strong></p>
+<ul>
+<li>Event ID 1000 (Application Error) - Crashes from mitigation triggers</li>
+<li>Event ID 1001 (Windows Error Reporting) - Exploitation attempt reports</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 1116 (Windows Defender Exploit Guard) - Exploit protection triggers</li>
+</ul>
+<p><strong>EMET (Enhanced Mitigation Experience Toolkit) Logs:</strong></p>
+<ul>
+<li>EMET mitigation events - If EMET installed</li>
+<li>Specific mitigation violations</li>
+</ul>
+<p><strong>Windows Defender Exploit Guard:</strong></p>
+<ul>
+<li>Exploit protection audit/block events</li>
+<li>Attack Surface Reduction (ASR) triggers</li>
+</ul>
+<p><strong>Mitigation Types:</strong></p>
+<ul>
+<li>DEP (Data Execution Prevention) - NX bit violations</li>
+<li>ASLR (Address Space Layout Randomization) - Address prediction attempts</li>
+<li>CFG (Control Flow Guard) - Control flow violations</li>
+<li>Stack cookies / GS - Stack buffer overflow detection</li>
+<li>SEHOP (SEH Overwrite Protection) - Exception handler protection</li>
+</ul>
+<p><strong>Exception Codes:</strong></p>
+<ul>
+<li><code>0xc0000005</code> - Access violation (DEP violation)</li>
+<li><code>0xc0000409</code> - Stack buffer overrun (stack cookie/GS)</li>
+<li><code>0xc0000374</code> - Heap corruption detected</li>
+<li><code>0xc000001d</code> - Illegal instruction</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Browser crashes from mitigation triggers</li>
+<li>Repeated exploitation attempts blocked by mitigations</li>
+<li>Mitigation bypasses indicating sophisticated exploits</li>
+<li>Correlation with network activity to exploit kits</li>
+<li>Multiple systems showing same mitigation triggers</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Browser crashes with DEP violations: exception code <code>0xc0000005</code> with execution attempted in non-executable memory</li>
+<li>Windows Defender Exploit Guard blocking browser exploitation attempts</li>
+<li>Event ID 1116 showing exploit protection triggers for browser processes</li>
+<li>Stack canary violations: exception code <code>0xc0000409</code> in browser or plugin processes</li>
+<li>CFG (Control Flow Guard) violations in browsers with this mitigation enabled</li>
+<li>EMET logs showing mitigation triggers: EAF, EAF+, BottomUpASLR, NullPage</li>
+<li>Multiple exploitation attempts blocked within short timeframe</li>
+<li>Mitigation triggers correlating with visits to specific websites</li>
+<li>ROP chain detection by exploit mitigations</li>
+<li>Heap corruption detected: exception code <code>0xc0000374</code> in browser processes</li>
+</ul>
+<hr>
+<h1>Drive-by Compromise Investigation Checklist</h1>
+<h2>1. Browser Process Crashes</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 1000 for browser crashes with exception code 0xc0000005 (access violation)</label></li>
+  <li><label><input type="checkbox"> Check multiple browser crashes within 5-10 minute window from same user/system</label></li>
+  <li><label><input type="checkbox"> Monitor crashes in ntdll.dll, kernel32.dll, rendering engines</label></li>
+  <li><label><input type="checkbox"> Identify browser crash followed by cmd.exe, powershell.exe creation</label></li>
+  <li><label><input type="checkbox"> Look for faulting modules: Flash, Java, PDF reader plugins</label></li>
+  <li><label><input type="checkbox"> Check crash patterns affecting multiple users visiting same website</label></li>
+  <li><label><input type="checkbox"> Review browser process termination (Event ID 5) followed by suspicious processes</label></li>
+  <li><label><input type="checkbox"> Monitor exception addresses pointing to heap spray regions or ROP gadgets</label></li>
+</ul>
+
+<h2>2. Suspicious Browser Child Processes</h2>
+<ul>
+  <li><label><input type="checkbox"> Check chrome.exe, firefox.exe, msedge.exe spawning cmd.exe, powershell.exe, wscript.exe</label></li>
+  <li><label><input type="checkbox"> Review browsers launching: mshta.exe, rundll32.exe, regsvr32.exe, certutil.exe</label></li>
+  <li><label><input type="checkbox"> Monitor Parent iexplore.exe with children from %TEMP% or %APPDATA%</label></li>
+  <li><label><input type="checkbox"> Identify encoded commands: powershell.exe -enc, cmd.exe /c &lt;base64&gt;</label></li>
+  <li><label><input type="checkbox"> Look for browsers spawning net.exe, whoami.exe, ipconfig.exe</label></li>
+  <li><label><input type="checkbox"> Check multiple suspicious children in sequence: browser → cmd → powershell → malware</label></li>
+  <li><label><input type="checkbox"> Review browser spawning executables from %TEMP%\Low\ or cache directories</label></li>
+  <li><label><input type="checkbox"> Monitor immediate execution of downloaded files without user interaction</label></li>
+</ul>
+
+<h2>3. Browser Downloads to Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Timeline: File creation (Event ID 11) → Execution (Event ID 1) within 30 seconds</label></li>
+  <li><label><input type="checkbox"> Check executables downloaded to %TEMP%, browser cache, %APPDATA% with immediate execution</label></li>
+  <li><label><input type="checkbox"> Review missing Zone.Identifier alternate data stream (MotW bypass)</label></li>
+  <li><label><input type="checkbox"> Monitor Zone.Identifier with ZoneId=2 (trusted sites) for suspicious downloads</label></li>
+  <li><label><input type="checkbox"> Identify downloads with suspicious names: random characters, double extensions</label></li>
+  <li><label><input type="checkbox"> Look for downloads executed without user “Open” action</label></li>
+  <li><label><input type="checkbox"> Check browser network connection → Download → Execution chain</label></li>
+  <li><label><input type="checkbox"> Review multiple files downloaded and executed sequentially</label></li>
+</ul>
+
+<h2>4. Exploit Kit Network Traffic</h2>
+<ul>
+  <li><label><input type="checkbox"> Check multiple HTTP 302 redirects: legitimate site → compromised site → exploit kit</label></li>
+  <li><label><input type="checkbox"> Review URLs with random parameters: ?id=MTIzNDU2Nzg=, ?key=a3f7d9e2</label></li>
+  <li><label><input type="checkbox"> Monitor HTTP responses with heavily obfuscated JavaScript (multiple encoding layers)</label></li>
+  <li><label><input type="checkbox"> Identify connections to recently registered domains or poor reputation domains</label></li>
+  <li><label><input type="checkbox"> Look for URL patterns: /gate.php, /landing.php, /main.php, /keitaro/</label></li>
+  <li><label><input type="checkbox"> Check HTTP requests for Flash files (.swf) from suspicious domains</label></li>
+  <li><label><input type="checkbox"> Review PDF requests with exploit kit fingerprinting parameters</label></li>
+  <li><label><input type="checkbox"> Monitor user-agent based filtering (different content per UA)</label></li>
+</ul>
+
+<h2>5. JavaScript Obfuscation</h2>
+<ul>
+  <li><label><input type="checkbox"> Review JavaScript with multiple nested eval() calls</label></li>
+  <li><label><input type="checkbox"> Check scripts using unescape(), String.fromCharCode() extensively</label></li>
+  <li><label><input type="checkbox"> Monitor long base64 or hex-encoded strings in JavaScript</label></li>
+  <li><label><input type="checkbox"> Identify array initialization with NOP sleds or shellcode patterns</label></li>
+  <li><label><input type="checkbox"> Look for scripts detecting browser version, plugins, OS (fingerprinting)</label></li>
+  <li><label><input type="checkbox"> Check obfuscated variable names: var _0x1a2b3c, single-character variables</label></li>
+  <li><label><input type="checkbox"> Review dynamic iframe creation pointing to external domains</label></li>
+  <li><label><input type="checkbox"> Monitor scripts with anti-debugging or VM detection code</label></li>
+</ul>
+
+<h2>6. Browser Plugin Crashes</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Flash Player crashes with exception code 0xc0000005</label></li>
+  <li><label><input type="checkbox"> Review Java plugin crashes after visiting specific websites</label></li>
+  <li><label><input type="checkbox"> Monitor PDF reader crashes when opening files from browser</label></li>
+  <li><label><input type="checkbox"> Identify multiple plugin crashes in short timeframe across users</label></li>
+  <li><label><input type="checkbox"> Look for plugin crash followed by browser spawning cmd.exe/powershell.exe</label></li>
+  <li><label><input type="checkbox"> Check faulting module showing plugin DLLs with known vulnerabilities</label></li>
+  <li><label><input type="checkbox"> Review plugin processes spawning unexpected child processes</label></li>
+  <li><label><input type="checkbox"> Monitor repeated crashes of same plugin component across systems</label></li>
+</ul>
+
+<h2>7. Malicious Iframe Injection</h2>
+<ul>
+  <li><label><input type="checkbox"> Check trusted websites returning content with unexpected &lt;iframe&gt; tags</label></li>
+  <li><label><input type="checkbox"> Review iframe tags with width="0" or height="0" (hidden)</label></li>
+  <li><label><input type="checkbox"> Monitor iframe sources pointing to recently registered domains</label></li>
+  <li><label><input type="checkbox"> Identify multiple HTTP redirects: trusted → compromised → exploit kit → exploit</label></li>
+  <li><label><input type="checkbox"> Look for JavaScript dynamically creating iframes: document.createElement('iframe')</label></li>
+  <li><label><input type="checkbox"> Check iframe sources with obfuscated or encoded URLs</label></li>
+  <li><label><input type="checkbox"> Review meta refresh tags: &lt;meta http-equiv="refresh" content="0;url=..."&gt;</label></li>
+  <li><label><input type="checkbox"> Monitor DNS queries showing progression through multiple domains in seconds</label></li>
+</ul>
+
+<h2>8. Heap Spray and Shellcode Patterns</h2>
+<ul>
+  <li><label><input type="checkbox"> Review browser memory with large blocks of repeated patterns (NOP sleds: 0x90909090)</label></li>
+  <li><label><input type="checkbox"> Check heap spray patterns: repeated addresses like 0x0c0c0c0c, 0x20202020</label></li>
+  <li><label><input type="checkbox"> Monitor memory regions with PAGE_EXECUTE_READWRITE permissions in browsers</label></li>
+  <li><label><input type="checkbox"> Identify shellcode signatures: GetProcAddress resolution, PEB walking</label></li>
+  <li><label><input type="checkbox"> Look for ROP gadget chains in memory preceding exploitation</label></li>
+  <li><label><input type="checkbox"> Check JavaScript or Flash allocating large arrays or strings</label></li>
+  <li><label><input type="checkbox"> Review memory containing egg hunters or shellcode stubs</label></li>
+  <li><label><input type="checkbox"> Monitor browser memory with Metasploit, Cobalt Strike, or custom shellcode</label></li>
+</ul>
+
+<h2>9. Browser File Writes to Suspicious Locations</h2>
+<ul>
+  <li><label><input type="checkbox"> Check browser processes creating .exe, .dll, .scr in %TEMP% or %APPDATA%</label></li>
+  <li><label><input type="checkbox"> Review files written to startup: %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\</label></li>
+  <li><label><input type="checkbox"> Monitor browser writing to system directories: C:\Windows, C:\Windows\System32\</label></li>
+  <li><label><input type="checkbox"> Identify multiple files created sequentially: dropper → payload → configuration</label></li>
+  <li><label><input type="checkbox"> Look for executables in browser cache vs. typical cache files</label></li>
+  <li><label><input type="checkbox"> Check files with system-like names: svchost.exe, explorer.exe, update.exe</label></li>
+  <li><label><input type="checkbox"> Review browser creating .lnk files in startup locations</label></li>
+  <li><label><input type="checkbox"> Monitor browser writing files then other processes immediately accessing them</label></li>
+</ul>
+
+<h2>10. Exploit Mitigation Triggers</h2>
+<ul>
+  <li><label><input type="checkbox"> Review browser crashes with DEP violations: exception 0xc0000005 in non-executable memory</label></li>
+  <li><label><input type="checkbox"> Check Windows Defender Exploit Guard blocking browser exploitation</label></li>
+  <li><label><input type="checkbox"> Monitor Event ID 1116 showing exploit protection triggers for browsers</label></li>
+  <li><label><input type="checkbox"> Identify stack canary violations: exception 0xc0000409 in browser/plugin processes</label></li>
+  <li><label><input type="checkbox"> Look for CFG (Control Flow Guard) violations in browsers</label></li>
+  <li><label><input type="checkbox"> Check EMET logs: EAF, EAF+, BottomUpASLR, NullPage mitigation triggers</label></li>
+  <li><label><input type="checkbox"> Review multiple exploitation attempts blocked within short timeframe</label></li>
+  <li><label><input type="checkbox"> Monitor mitigation triggers correlating with visits to specific websites</label></li>
+</ul>
+
+</body>
+</html>

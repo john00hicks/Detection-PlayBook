@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Replication Through Removable Media (T1091)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Replication Through Removable Media: <a href="https://attack.mitre.org/techniques/T1091/">T1091</a></h1>
+<h2>Detection Explanation</h2>
+<p>Adversaries may move onto systems by copying malware to removable media and taking advantage of Autorun features when the media is inserted into a system and executed. This technique is commonly used to spread malware in air-gapped or highly secure environments where network-based initial access is restricted.</p>
+<p><strong>Key Detection Indicators:</strong></p>
+<ul>
+<li>Unusual executable files or scripts written to removable media (USB drives, external HDDs, optical media)</li>
+<li>Autorun.inf files created on removable drives</li>
+<li>Processes spawning from removable media locations</li>
+<li>High volumes of file writes to removable devices</li>
+<li>Suspicious DLL or executable files with names mimicking legitimate system files</li>
+<li>Registry modifications related to AutoRun functionality</li>
+<li>Lateral movement patterns originating from removable media execution</li>
+</ul>
+<p><strong>Detection Strategy:</strong> Focus on monitoring file system activity on removable drives, process execution from external media paths, and registry changes that enable AutoRun. Cross-reference with device connection logs to establish a timeline of removable media insertion and subsequent suspicious activity.</p>
+<h2>Areas to Investigate</h2>
+<h3>Unusual executable files or scripts written to removable media</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4663 (Object access) - File writes to removable drive letters</li>
+<li>Event ID 6416 (External device recognized) - New device detection</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File creation) - Monitor drive letters typically assigned to removable media: <code>D:\</code>, <code>E:\</code>, <code>F:\</code>, <code>G:\</code>, <code>H:\</code></li>
+</ul>
+<p><strong>File patterns to monitor:</strong></p>
+<ul>
+<li>Extensions: <code>.exe</code>, <code>.dll</code>, <code>.bat</code>, <code>.cmd</code>, <code>.vbs</code>, <code>.js</code>, <code>.ps1</code>, <code>.scr</code>, <code>.pif</code>, <code>.com</code></li>
+<li>Hidden files or system files on removable media</li>
+<li>Files with double extensions: <code>document.pdf.exe</code>, <code>photo.jpg.scr</code></li>
+<li>Executables with misleading icons (appearing as documents/folders)</li>
+</ul>
+<p><strong>USBStor Registry:</strong></p>
+<ul>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Enum\USBSTOR</code> - Track USB device history</li>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Enum\USB</code> - USB device enumeration</li>
+</ul>
+<hr>
+<h3>Autorun.inf files created on removable drives</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File creation) - Specifically monitor for <code>autorun.inf</code> file creation on any drive</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4663 (Object access) - <code>autorun.inf</code> file writes</li>
+</ul>
+<p><strong>File system monitoring:</strong></p>
+<ul>
+<li>Look for <code>autorun.inf</code> in root directory of removable drives</li>
+<li>Check for <code>desktop.ini</code> files that can be abused similarly</li>
+<li>Monitor for hidden/system attribute set on autorun files</li>
+</ul>
+<p><strong>Autorun.inf indicators:</strong></p>
+<ul>
+<li><code>[autorun]</code> section with <code>open=</code>, <code>shellexecute=</code>, or <code>action=</code> directives</li>
+<li>References to executables on the removable media</li>
+<li>Icon files that mask malicious content</li>
+</ul>
+<hr>
+<h3>Processes spawning from removable media locations</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Processes with working directory on removable drives</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Filter for <code>Image</code> or <code>CurrentDirectory</code> fields pointing to removable drive letters</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Executable paths starting with removable drive letters: <code>D:\malware.exe</code>, <code>E:\setup.exe</code></li>
+<li>Parent processes launching from removable media</li>
+<li>Command-line parameters indicating execution from USB drives</li>
+<li>Scripts (PowerShell, VBScript) executing from removable media</li>
+</ul>
+<p><strong>Legitimate vs. suspicious:</strong></p>
+<ul>
+<li>Software installers (expected) vs. random executables (suspicious)</li>
+<li>Known vendor executables vs. oddly-named files</li>
+<li>Digital signatures on executables from removable media</li>
+</ul>
+<hr>
+<h3>High volumes of file writes to removable devices</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File creation) - Count file operations to removable drive letters within time windows</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4663 (Object access) - Aggregate write operations to removable media</li>
+</ul>
+<p><strong>Performance Monitor:</strong></p>
+<ul>
+<li>Disk Write Bytes/sec for removable disk volumes</li>
+<li>File system activity metrics for USB drives</li>
+</ul>
+<p><strong>Indicators:</strong></p>
+<ul>
+<li>Rapid file creation (hundreds of files in minutes)</li>
+<li>Large file transfers to USB drives from sensitive directories</li>
+<li>Copying of entire directory structures to removable media</li>
+<li>Files being written by system processes or services (unusual for normal USB use)</li>
+</ul>
+<hr>
+<h3>Suspicious DLL or executable files with names mimicking legitimate system files</h3>
+<p><strong>File naming patterns on removable media:</strong></p>
+<ul>
+<li>System file names: <code>svchost.exe</code>, <code>explorer.exe</code>, <code>lsass.exe</code>, <code>csrss.exe</code> on removable drives (red flag)</li>
+<li>Misspellings: <code>svchast.exe</code>, <code>exploren.exe</code>, <code>isass.exe</code></li>
+<li>Generic names: <code>update.exe</code>, <code>setup.exe</code>, <code>install.exe</code>, <code>readme.exe</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File creation) combined with Event ID 1 (Process creation) - Correlate file writes with execution</li>
+</ul>
+<p><strong>File analysis indicators:</strong></p>
+<ul>
+<li>No digital signatures or invalid signatures</li>
+<li>Mismatched file metadata (wrong version info, company names)</li>
+<li>Recently compiled executables (check PE timestamps)</li>
+<li>Packed or obfuscated binaries (high entropy)</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 8003/8004 (Windows Defender) - Malware detection on removable media</li>
+<li>Event ID 1116/1117 (Windows Defender) - Malware remediation actions</li>
+</ul>
+<hr>
+<h3>Registry modifications related to AutoRun functionality</h3>
+<p><strong>Registry keys to monitor:</strong></p>
+<ul>
+<li><code>HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoDriveTypeAutoRun</code></li>
+<li><code>HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\NoDriveTypeAutoRun</code></li>
+<li><code>HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\IniFileMapping\Autorun.inf</code></li>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Services\cdrom\AutoRun</code></li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4657 (Registry value modification) - Changes to AutoRun policies</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 12 (Registry object added/deleted)</li>
+<li>Event ID 13 (Registry value set)</li>
+<li>Event ID 14 (Registry object renamed)</li>
+</ul>
+<p><strong>Suspicious changes:</strong></p>
+<ul>
+<li>Disabling AutoRun protections</li>
+<li>Modifying AutoRun behavior to enable execution</li>
+<li>Creating run keys that reference removable media paths</li>
+<li>Shell extension modifications</li>
+</ul>
+<hr>
+<h3>Device connection and disconnection patterns</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 6416 (External device recognized) - New USB device connected</li>
+<li>Event ID 20001 (Plug and Play device install) - Device driver installation</li>
+<li>Event ID 20003 (Plug and Play device driver install failed) - Installation issues</li>
+<li>Event ID 400 (Device Manager) - Device insertion</li>
+<li>Event ID 410 (Device Manager) - Device removal</li>
+</ul>
+<p><strong>Device installation logs:</strong></p>
+<ul>
+<li><code>%SystemRoot%\inf\setupapi.dev.log</code> - Detailed device installation information</li>
+<li>Review for USB storage device installations</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Devices connected during off-hours</li>
+<li>Rapid connect/disconnect patterns (quick data transfer)</li>
+<li>Unknown or unregistered USB devices</li>
+<li>Devices connected to sensitive workstations (domain controllers, file servers)</li>
+</ul>
+<p><strong>USBStor tracking:</strong></p>
+<ul>
+<li>First connection timestamp</li>
+<li>Last connection timestamp</li>
+<li>Device serial numbers and vendor IDs</li>
+</ul>
+<hr>
+<h3>Lateral movement patterns originating from removable media execution</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4624 (Successful logon) - Logons shortly after USB insertion</li>
+<li>Event ID 4648 (Logon with explicit credentials) - Credential use after USB execution</li>
+<li>Event ID 5140 (Network share access) - Share access following removable media activity</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Outbound connections from processes launched from removable media</li>
+<li>Event ID 1 (Process creation) - Child processes spawned after initial execution from USB</li>
+</ul>
+<p><strong>Correlation patterns:</strong></p>
+<ul>
+<li>USB insertion → Process execution → Network activity → Lateral movement</li>
+<li>File copy from USB → Scheduled task creation → Persistence</li>
+<li>Autorun execution → Credential dumping → Network enumeration</li>
+</ul>
+<hr>
+<h3>Worm-like behavior and self-replication</h3>
+<p><strong>File system monitoring:</strong></p>
+<ul>
+<li>Identical files appearing across multiple systems</li>
+<li>Same hash values of executables on different removable media</li>
+<li>Rapid propagation to other connected USB devices</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File creation) - Same filename/hash written to multiple USB devices</li>
+<li>Event ID 15 (FileStream creation - NTFS ADS) - Alternate data streams on USB files</li>
+</ul>
+<p><strong>Behavioral indicators:</strong></p>
+<ul>
+<li>Malware copying itself to newly inserted removable media</li>
+<li>Automatic file replication when USB devices are inserted</li>
+<li>Network shares being used to distribute USB-borne malware</li>
+</ul>
+<hr>
+<h3>Execution via LNK files or shortcuts</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File creation) - <code>.lnk</code> file creation on removable media</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4663 (Object access) - LNK file writes to removable drives</li>
+</ul>
+<p><strong>LNK file analysis:</strong></p>
+<ul>
+<li>Shortcuts pointing to executables on same removable media</li>
+<li>LNK files with hidden target executables</li>
+<li>Shortcut arguments containing PowerShell or script execution</li>
+<li>LNK files with misleading names (appearing as folders or documents)</li>
+</ul>
+<p><strong>Registry:</strong></p>
+<ul>
+<li>Recent LNK file access: <code>HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs\.lnk</code></li>
+</ul>
+<hr>
+<h3>Antivirus and security software detections</h3>
+<p><strong>Windows Defender Logs:</strong></p>
+<ul>
+<li>Event ID 1116 (Malware detected) - Threats found on removable media</li>
+<li>Event ID 1117 (Malware action taken) - Remediation on USB drives</li>
+<li>Event ID 5007 (Configuration changed) - Real-time protection disabled before USB use</li>
+</ul>
+<p><strong>Third-party AV Logs:</strong></p>
+<ul>
+<li>Quarantine logs showing threats from removable drive letters</li>
+<li>Real-time protection alerts when USB inserted</li>
+<li>Heuristic/behavioral detection on USB execution</li>
+</ul>
+<p><strong>Application Event Logs:</strong></p>
+<ul>
+<li>Application crashes or errors correlating with USB insertion</li>
+<li>Security software tampering attempts</li>
+</ul>
+<hr>
+<h3>Data exfiltration to removable media</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File creation) - Sensitive file types copied to removable drives</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4663 (Object access) - Access to sensitive files followed by writes to USB</li>
+<li>Event ID 5145 (Network share accessed) - Share access followed by USB writes</li>
+</ul>
+<p><strong>Data Loss Prevention (DLP) Logs:</strong></p>
+<ul>
+<li>Policy violations for USB writes</li>
+<li>Sensitive document detection on removable media</li>
+<li>Encryption policy enforcement logs</li>
+</ul>
+<p><strong>File types to monitor:</strong></p>
+<ul>
+<li>Documents: <code>.docx</code>, <code>.xlsx</code>, <code>.pdf</code>, <code>.txt</code></li>
+<li>Databases: <code>.mdb</code>, <code>.accdb</code>, <code>.sqlite</code>, <code>.db</code></li>
+<li>Archives: <code>.zip</code>, <code>.rar</code>, <code>.7z</code></li>
+<li>Source code: <code>.py</code>, <code>.java</code>, <code>.cpp</code>, various development files</li>
+</ul>
+<hr>
+<h2>Additional Investigation Areas</h2>
+<p><strong>Device Control Policies:</strong></p>
+<ul>
+<li>Group Policy logs - USB device restrictions and policies</li>
+<li>BitLocker To Go enforcement logs</li>
+<li>Device authorization lists (whitelisted USB devices)</li>
+</ul>
+<p><strong>Forensic Artifacts:</strong></p>
+<ul>
+<li>Windows Registry: <code>HKLM\SYSTEM\MountedDevices</code> - Drive letter assignments</li>
+<li>Volume shadow copies - Historical USB file content</li>
+<li><code>$MFT</code> (Master File Table) analysis - Deleted files from USB</li>
+<li>Link files in user profile <code>Recent</code> folder</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4103/4104 (Script block logging) - PowerShell scripts executing from USB</li>
+<li>Execution of encoded commands from removable media</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>SMB traffic originating after USB insertion</li>
+<li>C2 callbacks initiated from USB-launched processes</li>
+<li>Internal reconnaissance following removable media execution</li>
+</ul>
+<p><strong>Correlation Opportunities:</strong></p>
+<ul>
+<li>Timeline USB insertion with process creation and network activity</li>
+<li>Cross-reference USB device serial numbers with multiple systems</li>
+<li>Correlate file hashes found on USB with known malware IOCs</li>
+<li>Link USB activity with user behavior analytics (authorized vs. unauthorized users)</li>
+</ul>
+<h1>Removable Media Attack Investigation Checklist</h1>
+<h2>1. Executable Files on Removable Media</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 11 for .exe, .dll, .bat, .ps1, .vbs files on drives D:\ through H:\</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4663 for file writes to removable drive letters</label></li>
+  <li><label><input type="checkbox"> Search for double extensions: .pdf.exe, .jpg.scr, .doc.exe</label></li>
+  <li><label><input type="checkbox"> Check for files with system/hidden attributes on USB drives</label></li>
+  <li><label><input type="checkbox"> Verify digital signatures on executables found on removable media</label></li>
+</ul>
+
+<h2>2. Autorun Files</h2>
+<ul>
+  <li><label><input type="checkbox"> Search Sysmon Event ID 11 for autorun.inf creation on any drive</label></li>
+  <li><label><input type="checkbox"> Check for desktop.ini files on removable media</label></li>
+  <li><label><input type="checkbox"> Review autorun.inf contents for open=, shellexecute=, or action= directives</label></li>
+  <li><label><input type="checkbox"> Verify if files referenced in autorun.inf exist on the same media</label></li>
+</ul>
+
+<h2>3. Process Execution from Removable Media</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4688/Sysmon Event ID 1 for Image paths starting with D:, E:, F:, G:, H:\</label></li>
+  <li><label><input type="checkbox"> Check CurrentDirectory field pointing to removable drives</label></li>
+  <li><label><input type="checkbox"> Identify scripts (PowerShell, VBScript) executing from USB locations</label></li>
+  <li><label><input type="checkbox"> Verify legitimacy of processes by checking digital signatures</label></li>
+</ul>
+
+<h2>4. High Volume File Operations</h2>
+<ul>
+  <li><label><input type="checkbox"> Count Sysmon Event ID 11 file creation events to removable drives in short timeframes</label></li>
+  <li><label><input type="checkbox"> Check for hundreds of files written within minutes</label></li>
+  <li><label><input type="checkbox"> Review large file transfers from sensitive directories to USB</label></li>
+  <li><label><input type="checkbox"> Identify entire directory structure copies to removable media</label></li>
+</ul>
+
+<h2>5. Suspicious File Naming</h2>
+<ul>
+  <li><label><input type="checkbox"> Search for system file names on removable drives: svchost.exe, explorer.exe, lsass.exe</label></li>
+  <li><label><input type="checkbox"> Check for misspellings: svchast.exe, exploren.exe, isass.exe</label></li>
+  <li><label><input type="checkbox"> Review generic suspicious names: update.exe, readme.exe, install.exe</label></li>
+  <li><label><input type="checkbox"> Check Event ID 1116/1117 for malware detections on USB drives</label></li>
+</ul>
+
+<h2>6. AutoRun Registry Modifications</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4657/Sysmon Event ID 13 for changes to NoDriveTypeAutoRun keys</label></li>
+  <li><label><input type="checkbox"> Review modifications to HKLM\SYSTEM\CurrentControlSet\Services\cdrom\AutoRun</label></li>
+  <li><label><input type="checkbox"> Monitor for disabled AutoRun protections</label></li>
+  <li><label><input type="checkbox"> Check for run keys referencing removable media paths</label></li>
+</ul>
+
+<h2>7. Device Connection Patterns</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 6416 for external device recognition</label></li>
+  <li><label><input type="checkbox"> Check Event ID 20001 for USB device driver installations</label></li>
+  <li><label><input type="checkbox"> Identify connections during off-hours or from sensitive workstations</label></li>
+  <li><label><input type="checkbox"> Check HKLM\SYSTEM\CurrentControlSet\Enum\USBSTOR for device history</label></li>
+  <li><label><input type="checkbox"> Look for rapid connect/disconnect patterns</label></li>
+</ul>
+
+<h2>8. Lateral Movement After USB Insertion</h2>
+<ul>
+  <li><label><input type="checkbox"> Correlate Event ID 4624 (logons) occurring after USB insertion</label></li>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 3 for network connections from USB-launched processes</label></li>
+  <li><label><input type="checkbox"> Review Event ID 5140 for network share access following removable media activity</label></li>
+  <li><label><input type="checkbox"> Timeline: USB insertion → Process execution → Network activity → Lateral movement</label></li>
+</ul>
+
+<h2>9. LNK File Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Search Sysmon Event ID 11 for .lnk file creation on removable drives</label></li>
+  <li><label><input type="checkbox"> Analyze LNK files pointing to executables on same removable media</label></li>
+  <li><label><input type="checkbox"> Check for shortcuts with PowerShell or script execution in arguments</label></li>
+  <li><label><input type="checkbox"> Review HKCU…\Explorer\RecentDocs.lnk for recent LNK access</label></li>
+</ul>
+
+<h2>10. Data Exfiltration to USB</h2>
+<ul>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 11 for sensitive file types (.docx, .xlsx, .pdf, .zip) to USB</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4663 for access to sensitive files followed by USB writes</label></li>
+  <li><label><input type="checkbox"> Review DLP logs for policy violations on USB writes</label></li>
+  <li><label><input type="checkbox"> Identify database files (.mdb, .sqlite, .db) or source code copied to removable media</label></li>
+</ul>
+
+
+</body>
+</html>
