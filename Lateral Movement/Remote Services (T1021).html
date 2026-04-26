@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Remote Services (T1021)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Remote Services: <a href="https://attack.mitre.org/techniques/T1021/">T1021</a></h1>
+<h2>Detection Explanation</h2>
+<p>Remote Services involves adversaries using legitimate remote access tools and protocols to move laterally across a network or maintain persistent access to compromised systems. This technique leverages built-in operating system features and commonly deployed remote administration tools, making malicious activity difficult to distinguish from legitimate administrative actions. Remote services are used throughout the attack lifecycle for initial access, lateral movement, and persistence.</p>
+<p>Attackers exploit remote services because they provide authenticated access that appears legitimate to security controls. Common methods include Remote Desktop Protocol (RDP) (T1021.001), SMB/Windows Admin Shares (T1021.002), Distributed Component Object Model (DCOM) (T1021.003), SSH (T1021.004), VNC (T1021.005), Windows Remote Management (WinRM) (T1021.006), and cloud-based remote services. Tools like PsExec, legitimate RDP clients, SSH clients, PowerShell remoting, and third-party remote access software are frequently employed.</p>
+<p>Successful use of remote services grants attackers the ability to execute commands, transfer files, deploy malware, and access resources on remote systems using valid credentials. This technique is particularly effective because it uses expected network traffic and authentication mechanisms, blending malicious activity with normal administrative operations. The impact includes widespread lateral movement, privilege escalation across multiple systems, persistent remote access, data exfiltration, and potential complete network compromise.</p>
+<p>Detection requires establishing baselines for legitimate remote service usage patterns and monitoring for anomalies such as unusual source/destination pairs, access during off-hours, use of service accounts from unexpected locations, failed authentication attempts preceding success, and remote service usage from non-administrative systems. Organizations must correlate authentication events with process execution, file operations, and network connections to identify malicious remote access.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>Remote Desktop Protocol (RDP) connections and anomalies (T1021.001)</li>
+<li>SMB/Windows Admin Share access patterns (T1021.002)</li>
+<li>PsExec and remote service creation (T1021.002)</li>
+<li>PowerShell remoting and WinRM usage (T1021.006)</li>
+<li>DCOM lateral movement and execution (T1021.003)</li>
+<li>SSH connections and suspicious authentication (T1021.004)</li>
+<li>Third-party remote access tool usage (VNC, TeamViewer, AnyDesk) (T1021.005)</li>
+<li>Scheduled task creation via remote services (T1021.002, T1021.006)</li>
+<li>WMI remote command execution (T1021.002)</li>
+<li>Remote Registry access and manipulation</li>
+</ol>
+<hr>
+<h3>1. Remote Desktop Protocol (RDP) Connections and Anomalies</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4624 (Successful logon) - LogonType 10 (RemoteInteractive/RDP)</li>
+<li>Event ID 4625 (Failed logon) - Failed RDP authentication attempts</li>
+<li>Event ID 4778 (Session reconnected) - RDP session reconnection</li>
+<li>Event ID 4779 (Session disconnected) - RDP session disconnection</li>
+<li>Key fields: <code>SourceNetworkAddress</code>, <code>TargetUserName</code>, <code>LogonType</code>, <code>WorkstationName</code></li>
+</ul>
+<p><strong>Windows Event Logs (TerminalServices-RemoteConnectionManager):</strong></p>
+<ul>
+<li>Event ID 1149 (Remote Desktop Services user authentication succeeded)</li>
+<li>Event ID 261 (Listener received connection)</li>
+</ul>
+<p><strong>Windows Event Logs (TerminalServices-LocalSessionManager):</strong></p>
+<ul>
+<li>Event ID 21 (Remote Desktop Services: Session logon succeeded)</li>
+<li>Event ID 22 (Remote Desktop Services: Shell start notification received)</li>
+<li>Event ID 24 (Remote Desktop Services: Session disconnected)</li>
+<li>Event ID 25 (Remote Desktop Services: Session reconnection succeeded)</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Connections to port 3389</li>
+<li>Event ID 1 (Process creation) - Processes spawned in RDP sessions</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Firewall logs - Inbound connections to TCP port 3389</li>
+<li>VPN logs - RDP connections through VPN tunnels</li>
+<li>Network flow data - RDP traffic patterns and volumes</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>RDP connections from unexpected source IPs or geographic locations</li>
+<li>RDP access to systems that don’t typically receive remote connections</li>
+<li>Multiple failed RDP attempts followed by successful authentication</li>
+<li>RDP connections during off-hours or from non-administrative users</li>
+<li>Lateral RDP connections between workstations</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>RDP logons (Event ID 4624 LogonType 10) from external IP addresses not on VPN</li>
+<li>Failed RDP attempts (Event ID 4625) followed by success within short timeframe</li>
+<li>RDP connections from workstations to other workstations (peer-to-peer lateral movement)</li>
+<li>Service accounts authenticating via RDP (should use service logon types)</li>
+<li>RDP sessions from IP addresses in unusual geographic locations</li>
+<li>Multiple RDP connections to different systems from single source in short timeframe</li>
+<li>RDP authentication outside user’s normal working hours</li>
+<li>Event ID 1149 showing authentication from internal reconnaissance activity</li>
+<li>BlueKeep or other RDP vulnerability exploitation indicators</li>
+<li>RDP connections using local administrator accounts instead of domain credentials</li>
+</ul>
+<hr>
+<h3>2. SMB/Windows Admin Share Access Patterns</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 5140 (Network share accessed) - Access to admin shares (<code>C$</code>, <code>ADMIN$</code>, <code>IPC$</code>)</li>
+<li>Event ID 5145 (Network share object accessed) - Specific file/folder access on shares</li>
+<li>Event ID 4624 (Successful logon) - LogonType 3 (Network) for SMB authentication</li>
+<li>Event ID 4672 (Special privileges assigned) - Administrative privileges for share access</li>
+<li>Key fields: <code>ShareName</code>, <code>SourceAddress</code>, <code>SubjectUserName</code>, <code>ObjectType</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Connections to TCP ports 445 (SMB) and 139 (NetBIOS)</li>
+<li>Event ID 1 (Process creation) - Remote execution via SMB shares</li>
+<li>Event ID 11 (File created) - Files written to admin shares</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Firewall logs - SMB traffic (TCP 445, 139) between systems</li>
+<li>IDS/IPS - SMB protocol anomalies and known attack patterns</li>
+<li>Netflow - SMB connection patterns and peer-to-peer communications</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>net use \\target\C$ /user:domain\user</code></li>
+<li><code>copy malware.exe \\target\C$\Windows\Temp\</code></li>
+<li><code>dir \\target\C$</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Access to administrative shares from non-server systems</li>
+<li>SMB connections between workstations (lateral movement)</li>
+<li>Admin share access from service accounts or non-privileged users</li>
+<li>File writes to <code>C$\Windows\Temp</code> or <code>ADMIN$</code> from remote systems</li>
+<li>Failed SMB authentication followed by successful access</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 5140 with <code>ShareName</code> of <code>C$</code>, <code>ADMIN$</code>, or <code>IPC$</code> from workstation IPs</li>
+<li>SMB access from systems that don’t perform administrative functions</li>
+<li>Network logons (LogonType 3) to admin shares during off-hours</li>
+<li>Executable files written to <code>C$\Windows\Temp\</code> or <code>C$\ProgramData\</code> via SMB</li>
+<li>Multiple systems accessed via admin shares from single source in short timeframe</li>
+<li>SMB traffic between workstations rather than workstation-to-server</li>
+<li>Admin share access using local administrator accounts with same password (pass-the-hash)</li>
+<li>Event ID 5145 showing access to sensitive files via network shares</li>
+<li>SMB connections immediately following credential dumping activity</li>
+<li>Failed SMB authentication (Event ID 4625 LogonType 3) preceding successful access</li>
+</ul>
+<hr>
+<h3>3. PsExec and Remote Service Creation</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4697 (Service installed) - New service creation, especially PSEXESVC</li>
+<li>Event ID 4688 (Process creation) - PsExec execution and service processes</li>
+<li>Event ID 5145 (Network share object accessed) - ADMIN$ access by PsExec</li>
+<li>Key fields: <code>ServiceName</code>, <code>ServiceFileName</code>, <code>CommandLine</code></li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 7045 (Service installed) - New service installation</li>
+<li>Event ID 7036 (Service state change) - Service starting/stopping</li>
+<li>Event ID 7040 (Service startup type changed)</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - PsExec.exe execution and spawned processes</li>
+<li>Event ID 13 (Registry value set) - Service registry modifications</li>
+<li>Event ID 11 (File created) - PsExec executable copied to ADMIN$ share</li>
+<li>Event ID 17/18 (Pipe created/connected) - Named pipes used by PsExec</li>
+</ul>
+<p><strong>Named Pipes to Monitor:</strong></p>
+<ul>
+<li><code>\\.\pipe\PSEXESVC</code></li>
+<li><code>\\.\pipe\PAExec</code></li>
+<li>Custom named pipes used by remote execution tools</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>psexec.exe \\target -u domain\user -p password cmd.exe</code></li>
+<li><code>psexec.exe @targets.txt -d -c malware.exe</code></li>
+<li><code>psexec.exe \\target -s cmd.exe</code> (execute as SYSTEM)</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Creation of services with names like PSEXESVC, PAExec, RemCom</li>
+<li>Services with executable paths in ADMIN$ share or Windows\Temp</li>
+<li>Remote service creation from non-administrative systems</li>
+<li>Services starting with SYSTEM privileges immediately after creation</li>
+<li>Temporary services that are created, started, and deleted rapidly</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 7045 with <code>ServiceName</code> containing “PSEXESVC”, “PAEXEC”, or random characters</li>
+<li>Service <code>ImagePath</code> pointing to <code>\\127.0.0.1\ADMIN$\</code>, <code>C:\Windows\</code>, or <code>%TEMP%</code></li>
+<li>Services created with startup type “Demand Start” or “Auto Start” by remote systems</li>
+<li>Event ID 4697 followed immediately by Event ID 7036 (service starting)</li>
+<li>Named pipe creation for <code>\\.\pipe\PSEXESVC</code> or similar patterns</li>
+<li>PsExec.exe in <code>C:\Windows\</code> or <code>C:\Windows\Temp\</code> directories</li>
+<li>Services with <code>LocalSystem</code> account executing commands from network shares</li>
+<li>Multiple systems showing identical service creation within minutes</li>
+<li>Service deletion shortly after execution (covering tracks)</li>
+<li>Command lines containing <code>-accepteula</code>, <code>-s</code>, <code>-d</code>, or <code>-c</code> PsExec parameters</li>
+</ul>
+<hr>
+<h3>4. PowerShell Remoting and WinRM Usage</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4624 (Successful logon) - LogonType 3 (Network) for WinRM</li>
+<li>Event ID 4648 (Logon with explicit credentials) - PowerShell remoting authentication</li>
+<li>Event ID 4656 (Handle to object requested) - WinRM service access</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script block logging) - Remote PowerShell commands</li>
+<li>Event ID 4103 (Module logging) - Remote session command execution</li>
+<li>Event ID 400 (Engine state changed) - Remote PowerShell session start</li>
+<li>Event ID 403 (Engine state stopped) - Remote PowerShell session termination</li>
+</ul>
+<p><strong>Windows Event Logs (WinRM):</strong></p>
+<ul>
+<li>Event ID 6 (Creating WSMan shell) - Remote PowerShell session creation</li>
+<li>Event ID 8 (WSMan request) - WinRM activity</li>
+<li>Event ID 15 (WSMan receive request) - Commands received via WinRM</li>
+<li>Event ID 91 (Creating Runspace) - PowerShell runspace creation for remote execution</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Connections to TCP port 5985 (HTTP) or 5986 (HTTPS)</li>
+<li>Event ID 1 (Process creation) - <code>wsmprovhost.exe</code> spawning commands</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>Enter-PSSession -ComputerName target -Credential domain\user</code></li>
+<li><code>Invoke-Command -ComputerName target -ScriptBlock {commands}</code></li>
+<li><code>New-PSSession -ComputerName target</code></li>
+<li><code>winrs -r:target cmd.exe</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>WinRM connections from non-administrative workstations</li>
+<li>PowerShell remoting to multiple systems from single source</li>
+<li>Remote PowerShell execution during off-hours</li>
+<li>WinRM usage by non-privileged accounts</li>
+<li>Commands executed via PowerShell remoting</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 4624 LogonType 3 to port 5985/5986 from workstation IPs</li>
+<li>PowerShell Event ID 4104 with remote execution indicators: <code>Enter-PSSession</code>, <code>Invoke-Command</code></li>
+<li><code>wsmprovhost.exe</code> spawning <code>cmd.exe</code>, <code>powershell.exe</code>, or suspicious executables</li>
+<li>WinRM Event ID 6 showing session creation from unexpected source IPs</li>
+<li>Remote PowerShell commands containing credential dumping, reconnaissance, or malware</li>
+<li>Multiple systems showing WinRM activity from same source IP within short timeframe</li>
+<li>Base64-encoded commands executed via <code>Invoke-Command</code></li>
+<li>WinRM connections outside standard administrative hours</li>
+<li>Service accounts used for interactive PowerShell remoting</li>
+<li>Event ID 91 showing runspace creation for malicious scripts</li>
+</ul>
+<hr>
+<h3>5. DCOM Lateral Movement and Execution</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Processes spawned via DCOM</li>
+<li>Event ID 4624 (Successful logon) - LogonType 3 (Network) for DCOM authentication</li>
+<li>Event ID 4672 (Special privileges assigned) - Privileges for DCOM execution</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Parent process: <code>svchost.exe</code> with <code>-k DcomLaunch</code></li>
+<li>Event ID 3 (Network connection) - Connections to TCP port 135 (RPC Endpoint Mapper)</li>
+<li>Event ID 11 (File created) - Files created via DCOM execution</li>
+</ul>
+<p><strong>Windows Event Logs (System):</strong></p>
+<ul>
+<li>Event ID 10016 (DCOM permissions) - DCOM access denied/allowed</li>
+</ul>
+<p><strong>DCOM Objects Used:</strong></p>
+<ul>
+<li>MMC20.Application (CLSID: <code>{49B2791A-B1AE-4C90-9B8E-E860BA07F889}</code>)</li>
+<li>ShellWindows (CLSID: <code>{9BA05972-F6A8-11CF-A442-00A0C90A8F39}</code>)</li>
+<li>ShellBrowserWindow (CLSID: <code>{C08AFD90-F2A1-11D1-8455-00A0C91F3880}</code>)</li>
+<li>Excel.Application, Word.Application (Office COM objects)</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Processes spawned by <code>svchost.exe</code> with DcomLaunch service group</li>
+<li>RPC connections (port 135) followed by dynamic high ports</li>
+<li>DCOM execution from non-administrative systems</li>
+<li>Office applications launched remotely via DCOM</li>
+<li>Unusual parent-child process relationships involving DCOM</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>svchost.exe -k DcomLaunch</code> spawning <code>cmd.exe</code>, <code>powershell.exe</code>, or executables</li>
+<li>Event ID 4688 with parent process <code>svchost.exe</code> and child process in <code>%TEMP%</code> or <code>%APPDATA%</code></li>
+<li>Network connections to port 135 followed by execution on remote system</li>
+<li>MMC20.Application or ShellWindows DCOM objects used from remote systems</li>
+<li>Office applications (Excel, Word) launched via DCOM without user interaction</li>
+<li>DCOM execution during off-hours or from workstations</li>
+<li>Processes created with SYSTEM privileges via DCOM</li>
+<li>Event ID 10016 showing DCOM permission changes or unusual access patterns</li>
+<li>Remote DCOM calls creating persistence mechanisms</li>
+<li>Multiple systems showing DCOM activity from same source within short timeframe</li>
+</ul>
+<hr>
+<h3>6. SSH Connections and Suspicious Authentication</h3>
+<p><strong>Linux/Unix Logs:</strong></p>
+<ul>
+<li><code>/var/log/auth.log</code> or <code>/var/log/secure</code> - SSH authentication events</li>
+<li>Look for: “Accepted publickey”, “Accepted password”, “Failed password”</li>
+<li>Key fields: source IP, username, authentication method</li>
+</ul>
+<p><strong>Windows Event Logs (OpenSSH):</strong></p>
+<ul>
+<li>Event ID 4 (sshd) - SSH connection accepted</li>
+<li>OpenSSH logs in <code>%PROGRAMDATA%\ssh\logs\</code> - Authentication and session logs</li>
+</ul>
+<p><strong>Sysmon (Windows):</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Connections to TCP port 22</li>
+<li>Event ID 1 (Process creation) - SSH client execution or sshd spawning shells</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Firewall logs - SSH traffic (TCP port 22) between systems</li>
+<li>IDS/IPS - SSH brute force attempts, tunneling patterns</li>
+<li>Netflow - SSH connection duration and data volumes</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>SSH connections from unexpected source IPs or geographic locations</li>
+<li>Multiple failed SSH authentication attempts followed by success</li>
+<li>SSH connections between workstations (lateral movement)</li>
+<li>SSH key-based authentication from unauthorized systems</li>
+<li>Unusual SSH traffic patterns (tunneling, port forwarding)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Multiple “Failed password” entries followed by “Accepted password” from same IP</li>
+<li>SSH connections from internal workstations rather than jump servers or bastion hosts</li>
+<li>Key-based authentication from IPs not authorized for key access</li>
+<li>SSH connections during off-hours or outside normal maintenance windows</li>
+<li>User accounts authenticating via SSH from multiple geographic locations simultaneously</li>
+<li>Root or privileged account SSH access from non-administrative systems</li>
+<li>SSH tunneling or port forwarding commands in shell history</li>
+<li>Newly added SSH public keys in <code>~/.ssh/authorized_keys</code></li>
+<li>SSH connections immediately following credential dumping or password changes</li>
+<li>High-volume SSH connections suggesting automated lateral movement</li>
+</ul>
+<hr>
+<h3>7. Third-Party Remote Access Tool Usage</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Remote access tool execution</li>
+<li>Event ID 4697 (Service installed) - Remote access tool service installation</li>
+<li>Event ID 4624 (Successful logon) - Authentication via remote access tools</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - VNC, TeamViewer, AnyDesk, Remote Utilities execution</li>
+<li>Event ID 3 (Network connection) - Connections to remote access tool ports</li>
+<li>Event ID 11 (File created) - Remote access tool installation files</li>
+<li>Event ID 13 (Registry value set) - Remote access tool configuration</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Firewall logs - Connections to VNC ports (5900+), TeamViewer, AnyDesk ports</li>
+<li>Proxy logs - Outbound connections to remote access service infrastructure</li>
+<li>DNS logs - Queries to remote access service domains</li>
+</ul>
+<p><strong>Common Tool Ports:</strong></p>
+<ul>
+<li>VNC: TCP 5900-5909</li>
+<li>TeamViewer: TCP 5938, UDP 5938</li>
+<li>AnyDesk: TCP 6568, TCP 7070</li>
+<li>Remote Utilities: TCP 5650, 5655</li>
+</ul>
+<p><strong>Registry Keys:</strong></p>
+<ul>
+<li>TeamViewer: <code>HKLM\Software\TeamViewer</code></li>
+<li>AnyDesk: <code>HKLM\Software\AnyDesk</code></li>
+<li>VNC: <code>HKLM\Software\RealVNC</code> or <code>HKLM\Software\TightVNC</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Installation of remote access tools not approved by IT policy</li>
+<li>Remote access tools running on servers or critical systems</li>
+<li>Tools configured for unattended access or with weak passwords</li>
+<li>Remote access tools executed from temporary directories</li>
+<li>Tools configured to start automatically or run as services</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>teamviewer.exe</code>, <code>anydesk.exe</code>, <code>vncviewer.exe</code> executed from <code>%TEMP%</code> or user directories</li>
+<li>Remote access tool services installed without change management approval</li>
+<li>Tools configured with “permanent access” or “unattended mode”</li>
+<li>Network connections to remote access infrastructure from corporate systems</li>
+<li>Registry keys showing remote access tool IDs or partner IDs</li>
+<li>Remote access tools with no associated user sessions or scheduled maintenance</li>
+<li>Installation during off-hours or by non-administrative accounts</li>
+<li>Tools communicating with command and control infrastructure</li>
+<li>Multiple systems showing identical remote access tool installations</li>
+<li>Remote access tool logs showing connections from suspicious IPs or locations</li>
+</ul>
+<hr>
+<h3>8. Scheduled Task Creation via Remote Services</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4698 (Scheduled task created) - New task creation</li>
+<li>Event ID 4702 (Scheduled task updated) - Task modification</li>
+<li>Event ID 4699 (Scheduled task deleted) - Task deletion (covering tracks)</li>
+<li>Event ID 4700 (Scheduled task enabled) - Task activation</li>
+<li>Event ID 4701 (Scheduled task disabled) - Task deactivation</li>
+<li>Key fields: <code>TaskName</code>, <code>SubjectUserName</code>, <code>TaskContent</code></li>
+</ul>
+<p><strong>Windows Event Logs (TaskScheduler):</strong></p>
+<ul>
+<li>Event ID 106 (Task registered) - Task creation</li>
+<li>Event ID 200 (Task execution) - Task run</li>
+<li>Event ID 201 (Task completion) - Task finished</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - <code>schtasks.exe</code> or <code>taskeng.exe</code> execution</li>
+<li>Event ID 11 (File created) - Task XML files in <code>C:\Windows\System32\Tasks\</code></li>
+<li>Event ID 13 (Registry value set) - Task scheduler registry modifications</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>schtasks.exe /create /tn TaskName /tr &quot;C:\malware.exe&quot; /sc once /st 00:00 /s target /u domain\user /p password</code></li>
+<li><code>schtasks.exe /create /tn TaskName /tr &quot;cmd.exe /c powershell.exe -enc &lt;base64&gt;&quot; /sc daily</code></li>
+<li>PowerShell: <code>Register-ScheduledTask -TaskName Name -Action (New-ScheduledTaskAction -Execute malware.exe)</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Scheduled tasks created remotely via SMB or WinRM</li>
+<li>Tasks configured to run with SYSTEM or administrative privileges</li>
+<li>Tasks executing from unusual locations (TEMP, APPDATA, user directories)</li>
+<li>Tasks created during off-hours or from non-administrative systems</li>
+<li>Tasks with suspicious or obfuscated command lines</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Event ID 4698 showing task creation from remote IP addresses</li>
+<li>Task actions containing <code>powershell.exe -enc</code>, <code>cmd.exe /c</code>, or encoded commands</li>
+<li>Tasks executing files from <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\ProgramData\</code></li>
+<li><code>schtasks.exe</code> executed with <code>/s</code> parameter (remote system) from workstations</li>
+<li>Tasks configured to run as SYSTEM without legitimate business requirement</li>
+<li>Task names using random characters or mimicking legitimate Windows tasks</li>
+<li>Tasks created and executed within minutes (immediate execution)</li>
+<li>Task XML files showing network logon triggers or unusual execution schedules</li>
+<li>Tasks deleted shortly after execution (Event ID 4699 after 200/201)</li>
+<li>Multiple systems showing identical scheduled task creation within short timeframe</li>
+</ul>
+<hr>
+<h3>9. WMI Remote Command Execution</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - WMI-spawned processes</li>
+<li>Event ID 4624 (Successful logon) - LogonType 3 for WMI authentication</li>
+<li>Event ID 4672 (Special privileges assigned) - Elevated WMI execution</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Parent process: <code>wmiprvse.exe</code> or <code>wmic.exe</code></li>
+<li>Event ID 3 (Network connection) - Connections to TCP port 135 and DCOM ports</li>
+<li>Event ID 19/20/21 (WMI events) - WMI event filter, consumer, binding creation</li>
+</ul>
+<p><strong>Windows Event Logs (WMI-Activity):</strong></p>
+<ul>
+<li>Event ID 5857 (WMI activity) - WMI provider operations</li>
+<li>Event ID 5860 (Temporary event consumer) - WMI event consumer registration</li>
+<li>Event ID 5861 (Permanent event consumer) - Persistent WMI event consumers</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>wmic /node:target /user:domain\user process call create &quot;cmd.exe /c malware.exe&quot;</code></li>
+<li><code>wmic /node:target process call create &quot;powershell.exe -enc &lt;base64&gt;&quot;</code></li>
+<li>PowerShell: <code>Invoke-WmiMethod -Class Win32_Process -Name Create -ArgumentList &quot;cmd.exe&quot; -ComputerName target</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>WMI command execution on remote systems from non-administrative workstations</li>
+<li>Processes spawned by <code>wmiprvse.exe</code> with suspicious command lines</li>
+<li>WMI event consumers used for persistence or lateral movement</li>
+<li>Remote WMI calls during off-hours or from unusual sources</li>
+<li>WMI execution creating files, modifying registry, or establishing persistence</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>wmiprvse.exe</code> spawning <code>cmd.exe</code>, <code>powershell.exe</code>, or executables from <code>%TEMP%</code></li>
+<li>Event ID 4688 with parent process <code>wmiprvse.exe</code> and suspicious child processes</li>
+<li><code>wmic.exe</code> executed with <code>/node:</code> parameter from workstations</li>
+<li>PowerShell commands using <code>Invoke-WmiMethod</code> or <code>Get-WmiObject</code> for remote execution</li>
+<li>WMI Event ID 5861 showing permanent event consumers for persistence</li>
+<li>Network connections to port 135 followed by process creation on remote system</li>
+<li>WMI queries for reconnaissance: <code>wmic /node:target os get</code>, <code>wmic /node:target process list</code></li>
+<li>Base64-encoded commands executed via WMI</li>
+<li>Multiple systems showing WMI activity from same source IP within short timeframe</li>
+<li>WMI event filters with suspicious triggers (user logon, system start)</li>
+</ul>
+<hr>
+<h3>10. Remote Registry Access and Manipulation</h3>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4656 (Handle to object requested) - Remote registry access</li>
+<li>Event ID 4657 (Registry value modification) - Remote registry changes</li>
+<li>Event ID 4663 (Access attempted to object) - Registry key access</li>
+<li>Event ID 4670 (Permissions changed) - Registry permissions modified</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 12 (Registry object added/deleted) - Registry modifications from remote systems</li>
+<li>Event ID 13 (Registry value set) - Remote registry value changes</li>
+<li>Event ID 14 (Registry object renamed) - Remote registry key renames</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Firewall logs - Connections to TCP port 445 for remote registry</li>
+<li>Netflow - SMB traffic patterns associated with registry access</li>
+</ul>
+<p><strong>Command-Line Patterns:</strong></p>
+<ul>
+<li><code>reg query \\target\HKLM\Software\Microsoft\Windows\CurrentVersion\Run</code></li>
+<li><code>reg add \\target\HKLM\System\CurrentControlSet\Services\ServiceName</code></li>
+<li>PowerShell: <code>Get-ItemProperty -Path &quot;\\target\HKLM:\Software\...&quot;</code></li>
+</ul>
+<p><strong>Registry Keys Commonly Targeted:</strong></p>
+<ul>
+<li><code>HKLM\Software\Microsoft\Windows\CurrentVersion\Run</code> - Persistence</li>
+<li><code>HKLM\System\CurrentControlSet\Services\</code> - Service configuration</li>
+<li><code>HKLM\SAM\SAM\Domains\Account</code> - Credential access</li>
+<li><code>HKLM\Security\Policy\Secrets</code> - LSA secrets</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Remote registry access from non-administrative workstations</li>
+<li>Registry modifications for persistence or privilege escalation</li>
+<li>Access to sensitive registry keys (SAM, SECURITY, LSA secrets)</li>
+<li>Remote registry connections during off-hours</li>
+<li>Registry queries for reconnaissance or credential harvesting</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Remote registry access to <code>HKLM\SAM</code> or <code>HKLM\SECURITY</code> hives</li>
+<li>Registry Run key modifications from remote systems</li>
+<li><code>reg.exe</code> executed with <code>\\target\</code> UNC paths from workstations</li>
+<li>Remote registry service (RemoteRegistry) started unexpectedly</li>
+<li>Registry queries for service configurations or autostart locations</li>
+<li>PowerShell remote registry access using <code>[Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey</code></li>
+<li>Multiple systems accessed via remote registry from single source</li>
+<li>Registry access followed immediately by process creation or file modification</li>
+<li>Remote registry connections from systems not performing administrative functions</li>
+<li>Registry permissions modified to allow broader access from remote systems</li>
+</ul>
+<hr>
+<h1>Remote Services Investigation Checklist</h1>
+
+<h2>1. RDP Connections and Anomalies</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4624 LogonType 10 from external IPs not on VPN</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4625 (failed RDP) followed by Event ID 4624 within short timeframe</label></li>
+  <li><label><input type="checkbox"> Monitor Event ID 1149/261 for RDP authentication from unexpected sources</label></li>
+  <li><label><input type="checkbox"> Identify RDP connections from workstations to other workstations (lateral movement)</label></li>
+  <li><label><input type="checkbox"> Look for service accounts authenticating via RDP (incorrect logon type)</label></li>
+  <li><label><input type="checkbox"> Check for RDP sessions from unusual geographic locations</label></li>
+  <li><label><input type="checkbox"> Review RDP authentication outside normal working hours</label></li>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 3 for connections to port 3389</label></li>
+</ul>
+
+<h2>2. SMB/Admin Share Access</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 5140 for access to C$, ADMIN$, IPC$ from workstation IPs</label></li>
+  <li><label><input type="checkbox"> Check Event ID 5145 for executable files written to C$\\Windows\\Temp, C$\\ProgramData\\</label></li>
+  <li><label><input type="checkbox"> Monitor Event ID 4624 LogonType 3 for admin share access during off-hours</label></li>
+  <li><label><input type="checkbox"> Identify SMB traffic between workstations (Sysmon Event ID 3 to TCP 445/139)</label></li>
+  <li><label><input type="checkbox"> Look for admin share access using local administrator accounts (pass-the-hash)</label></li>
+  <li><label><input type="checkbox"> Check for multiple systems accessed via admin shares from single source</label></li>
+  <li><label><input type="checkbox"> Review failed SMB authentication (Event ID 4625 LogonType 3) preceding success</label></li>
+</ul>
+
+<h2>3. PsExec and Remote Service Creation</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 7045/4697 for services named PSEXESVC, PAEXEC, or random characters</label></li>
+  <li><label><input type="checkbox"> Review service ImagePath pointing to \\127.0.0.1\\ADMIN$, C:\\Windows, %TEMP%</label></li>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 17/18 for named pipes: .\\pipe\\PSEXESVC, .\\pipe\\PAExec</label></li>
+  <li><label><input type="checkbox"> Identify services created with LocalSystem account from network shares</label></li>
+  <li><label><input type="checkbox"> Look for services created, started, and deleted rapidly (covering tracks)</label></li>
+  <li><label><input type="checkbox"> Check for PsExec.exe in C:\\Windows\\ or C:\\Windows\\Temp\\ directories</label></li>
+  <li><label><input type="checkbox"> Review command lines with -accepteula, -s, -d, or -c parameters</label></li>
+</ul>
+
+<h2>4. PowerShell Remoting and WinRM</h2>
+<ul>
+  <li><label><input type="checkbox"> Monitor Event ID 4624 LogonType 3 to ports 5985/5986 from workstation IPs</label></li>
+  <li><label><input type="checkbox"> Check PowerShell Event ID 4104 for Enter-PSSession, Invoke-Command patterns</label></li>
+  <li><label><input type="checkbox"> Review wsmprovhost.exe spawning cmd.exe, powershell.exe, or suspicious executables</label></li>
+  <li><label><input type="checkbox"> Identify WinRM Event ID 6 showing session creation from unexpected sources</label></li>
+  <li><label><input type="checkbox"> Look for Base64-encoded commands via Invoke-Command</label></li>
+  <li><label><input type="checkbox"> Check for multiple systems with WinRM activity from same source IP</label></li>
+  <li><label><input type="checkbox"> Monitor WinRM connections outside standard administrative hours</label></li>
+</ul>
+
+<h2>5. DCOM Lateral Movement</h2>
+<ul>
+  <li><label><input type="checkbox"> Check for svchost.exe -k DcomLaunch spawning cmd.exe, powershell.exe</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4688 with parent svchost.exe and child in %TEMP%, %APPDATA%</label></li>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 3 for connections to port 135 followed by execution</label></li>
+  <li><label><input type="checkbox"> Identify MMC20.Application or ShellWindows DCOM object usage</label></li>
+  <li><label><input type="checkbox"> Look for Office applications (Excel, Word) launched via DCOM remotely</label></li>
+  <li><label><input type="checkbox"> Check Event ID 10016 for unusual DCOM permission changes</label></li>
+  <li><label><input type="checkbox"> Review processes with SYSTEM privileges created via DCOM</label></li>
+</ul>
+
+<h2>6. SSH Connections</h2>
+<ul>
+  <li><label><input type="checkbox"> Review /var/log/auth.log for multiple “Failed password” followed by “Accepted password”</label></li>
+  <li><label><input type="checkbox"> Check for SSH connections from workstations instead of jump/bastion hosts</label></li>
+  <li><label><input type="checkbox"> Monitor SSH connections during off-hours or maintenance windows</label></li>
+  <li><label><input type="checkbox"> Identify key-based authentication from unauthorized IPs</label></li>
+  <li><label><input type="checkbox"> Look for root/privileged SSH access from non-administrative systems</label></li>
+  <li><label><input type="checkbox"> Check for newly added keys in ~/.ssh/authorized_keys</label></li>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 3 for connections to TCP port 22 from unusual sources</label></li>
+</ul>
+
+<h2>7. Third-Party Remote Access Tools</h2>
+<ul>
+  <li><label><input type="checkbox"> Check for teamviewer.exe, anydesk.exe, vncviewer.exe in %TEMP% or user directories</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4697 for remote access tool service installations</label></li>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 3 for connections to VNC (5900+), TeamViewer (5938), AnyDesk (6568)</label></li>
+  <li><label><input type="checkbox"> Identify tools configured with “permanent access” or “unattended mode”</label></li>
+  <li><label><input type="checkbox"> Look for remote access tool installation during off-hours</label></li>
+  <li><label><input type="checkbox"> Check registry keys: HKLM\\Software\\TeamViewer, HKLM\\Software\\AnyDesk</label></li>
+  <li><label><input type="checkbox"> Review tools communicating with external C2 infrastructure</label></li>
+</ul>
+
+<h2>8. Remote Scheduled Task Creation</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4698 showing task creation from remote IP addresses</label></li>
+  <li><label><input type="checkbox"> Review task actions with powershell.exe -enc, cmd.exe /c, or encoded commands</label></li>
+  <li><label><input type="checkbox"> Monitor tasks executing from %TEMP%, %APPDATA%, C:\\ProgramData\\</label></li>
+  <li><label><input type="checkbox"> Identify schtasks.exe with /s parameter from workstations</label></li>
+  <li><label><input type="checkbox"> Look for tasks configured to run as SYSTEM without business justification</label></li>
+  <li><label><input type="checkbox"> Check for tasks created and executed within minutes</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4699 (deletion) shortly after Event ID 200/201 (execution)</label></li>
+</ul>
+
+<h2>9. WMI Remote Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Check for wmiprvse.exe spawning cmd.exe, powershell.exe, or executables from %TEMP%</label></li>
+  <li><label><input type="checkbox"> Review wmic.exe executed with /node: parameter from workstations</label></li>
+  <li><label><input type="checkbox"> Monitor PowerShell Invoke-WmiMethod or Get-WmiObject for remote execution</label></li>
+  <li><label><input type="checkbox"> Identify WMI Event ID 5861 for permanent event consumers (persistence)</label></li>
+  <li><label><input type="checkbox"> Look for connections to port 135 followed by process creation</label></li>
+  <li><label><input type="checkbox"> Check for Base64-encoded commands executed via WMI</label></li>
+  <li><label><input type="checkbox"> Review WMI queries for reconnaissance: wmic /node:target os get, process list</label></li>
+</ul>
+
+<h2>10. Remote Registry Access</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4656/4657 for remote registry access to HKLM\\SAM, HKLM\\SECURITY</label></li>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 13 for remote registry Run key modifications</label></li>
+  <li><label><input type="checkbox"> Review reg.exe with \\target\\ UNC paths from workstations</label></li>
+  <li><label><input type="checkbox"> Identify RemoteRegistry service starting unexpectedly</label></li>
+  <li><label><input type="checkbox"> Look for PowerShell [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey usage</label></li>
+  <li><label><input type="checkbox"> Check for registry access to HKLM\\System\\CurrentControlSet\\Services\\ remotely</label></li>
+  <li><label><input type="checkbox"> Monitor registry queries for credentials: HKLM\\Security\\Policy\\Secrets</label></li>
+</ul>
+
+<h2>11. Cross-Service Correlation</h2>
+<ul>
+  <li><label><input type="checkbox"> Timeline: Authentication (Event ID 4624) → Remote service usage → Process execution</label></li>
+  <li><label><input type="checkbox"> Correlate: Failed auth attempts → Successful access → Lateral movement</label></li>
+  <li><label><input type="checkbox"> Track: Single source IP → Multiple systems → Sequential access pattern</label></li>
+  <li><label><input type="checkbox"> Identify: Off-hours activity across multiple remote service types</label></li>
+  <li><label><input type="checkbox"> Monitor: Service account usage across RDP, WinRM, SMB simultaneously</label></li>
+</ul>
+
+
+</body>
+</html>
