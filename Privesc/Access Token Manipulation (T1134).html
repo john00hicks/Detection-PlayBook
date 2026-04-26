@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Access Token Manipulation (T1134)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Access Token Manipulation: <a href="https://attack.mitre.org/techniques/T1134/">T1134</a></h1>
+<h2>Detection Explanation</h2>
+<p>Access Token Manipulation occurs when adversaries modify Windows access tokens to operate under different security contexts, escalate privileges, or evade detection. Access tokens are kernel objects that describe the security context of a process or thread, containing information about the user’s identity, group memberships, and privileges. By manipulating these tokens, attackers can impersonate other users, escalate from standard user to SYSTEM privileges, bypass User Account Control (UAC), or execute actions under alternate security contexts without proper authentication.</p>
+<p>Attackers leverage token manipulation for multiple objectives including privilege escalation, defense evasion, and lateral movement. Common sub-techniques include Token Impersonation/Theft (T1134.001) where attackers duplicate tokens from privileged processes, Create Process with Token (T1134.002) to spawn processes using stolen tokens, Make and Impersonate Token (T1134.003) for creating new tokens from credentials, and Parent PID Spoofing (T1134.004) to disguise process lineage. This technique is frequently observed in the post-exploitation phase after initial access has been achieved, often following credential dumping or exploitation activities. Tools like Mimikatz, Cobalt Strike, Meterpreter, Incognito, and various PowerShell frameworks provide built-in token manipulation capabilities.</p>
+<p>Token manipulation is particularly dangerous because it allows attackers to operate under legitimate security contexts, making their activities appear as authorized actions. This technique enables lateral movement without additional authentication, privilege escalation without exploiting vulnerabilities, and the ability to bypass many traditional security controls. Attackers commonly target high-value tokens from processes running as SYSTEM, domain administrators, or service accounts to gain elevated access across the environment.</p>
+<p>Detecting token manipulation requires monitoring for suspicious use of Windows API calls (OpenProcessToken, DuplicateTokenEx, ImpersonateLoggedOnUser, CreateProcessWithToken), unusual parent-child process relationships, privilege assignments that don’t match expected patterns, and processes operating under security contexts inconsistent with their typical behavior. The technique often generates specific security events related to privilege use, special logons, and handle operations that can reveal manipulation attempts.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>Token impersonation through process handle operations (T1134.001)</li>
+<li>Process creation with stolen or duplicated tokens (T1134.002)</li>
+<li>Explicit credential use and token creation from logon sessions (T1134.003)</li>
+<li>Parent Process ID (PPID) spoofing and process ancestry manipulation (T1134.004)</li>
+<li>Suspicious use of SeDebugPrivilege and other sensitive privileges</li>
+<li>Processes with mismatched integrity levels and security contexts</li>
+<li>Named pipe impersonation for token theft</li>
+<li>Token manipulation via known attack tools and frameworks</li>
+<li>Unusual logon types and authentication patterns</li>
+<li>Cross-session token operations and remote token manipulation</li>
+</ol>
+<hr>
+<h3>1. Token Impersonation Through Process Handle Operations (T1134.001)</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4673 (Sensitive Privilege Use) - Use of <code>SeImpersonatePrivilege</code>, <code>SeAssignPrimaryTokenPrivilege</code>, <code>SeTcbPrivilege</code></li>
+<li>Event ID 4703 (User Right Adjusted) - Token privileges adjusted</li>
+<li>Event ID 4688 (Process Creation) - Check for Token Elevation Type field indicating privilege changes</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 10 (Process Access) - Process opening handles to privileged processes with specific access rights
+<ul>
+<li><code>GrantedAccess</code>: <code>0x1410</code> (PROCESS_QUERY_INFORMATION | PROCESS_VM_READ)</li>
+<li><code>GrantedAccess</code>: <code>0x1010</code> (PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ)</li>
+<li><code>GrantedAccess</code>: <code>0x1400</code> or <code>0x1000</code> targeting SYSTEM processes</li>
+</ul>
+</li>
+<li>Event ID 1 (Process Creation) - Check <code>IntegrityLevel</code> and <code>User</code> fields for mismatches</li>
+</ul>
+<p><strong>EDR/API Monitoring:</strong></p>
+<ul>
+<li>API calls: <code>OpenProcessToken()</code>, <code>DuplicateTokenEx()</code>, <code>ImpersonateLoggedOnUser()</code>, <code>SetThreadToken()</code></li>
+<li>Handle operations on privileged process tokens</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Non-administrative processes accessing tokens of SYSTEM processes</li>
+<li>Web application processes (w3wp.exe, apache, java) accessing privileged tokens</li>
+<li>User-mode applications opening handles to <code>lsass.exe</code>, <code>winlogon.exe</code>, <code>services.exe</code></li>
+<li>Processes with Medium integrity accessing High or SYSTEM integrity processes</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>powershell.exe</code>, <code>cmd.exe</code>, or scripting engines accessing privileged process tokens</li>
+<li>Processes using <code>SeImpersonatePrivilege</code> outside expected service contexts (IIS, SQL Server)</li>
+<li>Token duplication from processes running as different users</li>
+<li>Multiple rapid token access attempts from the same process</li>
+<li>Process access patterns: Low-privilege process → <code>lsass.exe</code> → Token duplication → SYSTEM process creation</li>
+<li>Commands: <code>Invoke-TokenManipulation -CreateProcess</code>, <code>steal_token</code> (Cobalt Strike), <code>incognito.exe</code></li>
+</ul>
+<hr>
+<h3>2. Process Creation with Stolen or Duplicated Tokens (T1134.002)</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4688 (Process Creation) - New process with mismatched creator and process user
+<ul>
+<li>Check <code>Creator Process Name</code> vs <code>New Process Name</code> user contexts</li>
+<li>Review <code>Token Elevation Type</code> field (values: 1=default, 2=elevated, 3=full)</li>
+</ul>
+</li>
+<li>Event ID 4624 (Logon) - LogonType 9 (NewCredentials) indicating RunAs usage</li>
+<li>Event ID 4648 (Explicit Credential Logon) - Process started with alternate credentials</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process Creation) - Analyze <code>ParentImage</code>, <code>User</code>, <code>IntegrityLevel</code>, and <code>ParentUser</code> fields
+<ul>
+<li>Parent and child running as different users without corresponding logon events</li>
+<li>Integrity level mismatches (Medium parent spawning High/SYSTEM child)</li>
+</ul>
+</li>
+</ul>
+<p><strong>EDR/Process Monitoring:</strong></p>
+<ul>
+<li>API calls: <code>CreateProcessWithTokenW()</code>, <code>CreateProcessAsUserW()</code>, <code>CreateProcessWithLogonW()</code></li>
+<li>Process trees showing privilege escalation without authentication events</li>
+</ul>
+<p><strong>Look for:</strong></p>
+<ul>
+<li>User processes spawning SYSTEM-level child processes without scheduled task or service context</li>
+<li>Processes created with tokens from different logon sessions</li>
+<li>Child processes with higher integrity than parent without UAC elevation</li>
+<li>Process creation lacking corresponding authentication events (Event ID 4624)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>cmd.exe</code> or <code>powershell.exe</code> spawned as SYSTEM from non-service parent</li>
+<li>Interactive processes (explorer.exe) spawning SYSTEM children</li>
+<li>Web server processes spawning high-privilege command shells</li>
+<li>Process lineage showing privilege escalation: <code>user_process.exe</code> → <code>cmd.exe</code> (SYSTEM)</li>
+<li>Commands: <code>runas /user:DOMAIN\Administrator</code>, <code>CreateProcessWithToken</code> API usage</li>
+<li>Cobalt Strike beacon executing <code>spawn</code> or <code>spawnas</code> commands</li>
+<li>Metasploit <code>getsystem</code> or <code>steal_token</code> operations</li>
+<li>Tool artifacts: <code>Invoke-TokenManipulation -CreateProcess &quot;cmd.exe&quot; -ProcessId 1234</code></li>
+</ul>
+<hr>
+<h3>3. Explicit Credential Use and Token Creation from Logon Sessions (T1134.003)</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4624 (Logon) - LogonType 9 (NewCredentials) or LogonType 2 (Interactive) with <code>runas</code> context</li>
+<li>Event ID 4648 (Explicit Credential Logon) - Process spawned with explicit credentials
+<ul>
+<li>Review <code>Subject</code> (who initiated) vs <code>Target</code> (credentials used)</li>
+</ul>
+</li>
+<li>Event ID 4672 (Special Privileges Assigned) - Administrative privileges assigned to new logon</li>
+<li>Event ID 4673 (Sensitive Privilege Use) - <code>SeTcbPrivilege</code> (Act as part of operating system)</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process Creation) - <code>runas.exe</code> execution or processes with <code>LogonId</code> mismatches</li>
+<li>Event ID 10 (Process Access) - Access to <code>lsass.exe</code> for credential extraction preceding token creation</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script Block Logging) - Scripts using <code>Make-Token</code>, <code>Invoke-TokenManipulation</code>, <code>New-Token</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li><code>runas.exe</code> execution from non-administrative contexts</li>
+<li>Token creation using credentials obtained through credential dumping</li>
+<li>Logon events (4624) occurring without corresponding network or interactive activity</li>
+<li>Processes making authentication API calls: <code>LogonUserW()</code>, <code>LogonUserExW()</code></li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Multiple Event ID 4648 events from same source without legitimate administrative activity</li>
+<li><code>runas.exe</code> spawning processes as domain administrator from standard workstations</li>
+<li>Logon events with unusual LogonType combinations</li>
+<li>Token creation shortly after credential dumping indicators (access to lsass.exe)</li>
+<li>Commands: <code>runas /user:DOMAIN\Administrator /netonly cmd.exe</code></li>
+<li>PowerShell: <code>Invoke-TokenManipulation -Username &quot;DOMAIN\admin&quot; -Password $pass</code></li>
+<li>API patterns: <code>LogonUserW()</code> → <code>CreateProcessWithTokenW()</code> sequence</li>
+<li>Network logon (Type 3) without corresponding network connection</li>
+<li>Credentials used from memory without corresponding Event ID 4624 logon</li>
+</ul>
+<hr>
+<h3>4. Parent Process ID (PPID) Spoofing and Process Ancestry Manipulation (T1134.004)</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process Creation) - Analyze <code>ParentProcessId</code>, <code>ParentImage</code>, <code>ParentCommandLine</code>
+<ul>
+<li>Compare against expected parent-child relationships</li>
+<li>Check for terminated parents spawning new children</li>
+</ul>
+</li>
+<li>Event ID 5 (Process Terminated) - Correlate with Event ID 1 to identify dead parent processes</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4688 (Process Creation) - Review <code>Creator Process ID</code> and <code>Creator Process Name</code>
+<ul>
+<li>Process lineage that doesn’t match expected system behavior</li>
+</ul>
+</li>
+</ul>
+<p><strong>EDR/Process Monitoring:</strong></p>
+<ul>
+<li>Process tree analysis showing illogical parent-child relationships</li>
+<li>API calls: <code>UpdateProcThreadAttribute()</code> with <code>PROC_THREAD_ATTRIBUTE_PARENT_PROCESS</code></li>
+<li>Handle inheritance from unexpected processes</li>
+</ul>
+<p><strong>Look for:</strong></p>
+<ul>
+<li>Critical processes with spoofed parents (cmd.exe parented to explorer.exe when it should be services.exe)</li>
+<li>Parent processes that terminated before child process creation timestamp</li>
+<li>System processes showing user applications as parents</li>
+<li>Processes with parent PIDs that don’t exist or have been reused</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>cmd.exe</code> or <code>powershell.exe</code> with <code>ParentImage</code> of <code>explorer.exe</code> but created outside user logon context</li>
+<li><code>svchost.exe</code> with parent other than <code>services.exe</code></li>
+<li>High-privilege processes with low-privilege parents</li>
+<li>Process creation timestamp before parent process creation timestamp</li>
+<li>Parent PID pointing to terminated or non-existent process</li>
+<li>Cobalt Strike beacon spawning processes with PPID spoofing</li>
+<li>Commands showing spoofing indicators: <code>psinject</code> (Cobalt Strike), <code>--ppid</code> parameters</li>
+<li>Process trees missing intermediate processes: <code>explorer.exe</code> → <code>powershell.exe</code> (no cmd.exe)</li>
+<li>SYSTEM processes parented by user-mode applications without service installation</li>
+</ul>
+<hr>
+<h3>5. Suspicious Use of SeDebugPrivilege and Other Sensitive Privileges</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4673 (Sensitive Privilege Use) - Monitor for:
+<ul>
+<li><code>SeDebugPrivilege</code> - Debug programs (access any process)</li>
+<li><code>SeTcbPrivilege</code> - Act as part of operating system</li>
+<li><code>SeImpersonatePrivilege</code> - Impersonate a client after authentication</li>
+<li><code>SeAssignPrimaryTokenPrivilege</code> - Replace process-level token</li>
+<li><code>SeRestorePrivilege</code> - Restore files and directories (often abused)</li>
+<li><code>SeTakeOwnershipPrivilege</code> - Take ownership of objects</li>
+</ul>
+</li>
+<li>Event ID 4672 (Special Privileges Assigned) - Administrative privileges assigned to logon session</li>
+<li>Event ID 4703 (User Right Adjusted) - Token privileges enabled or disabled</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 10 (Process Access) - Correlation with privilege use
+<ul>
+<li>Processes accessing others after enabling <code>SeDebugPrivilege</code></li>
+</ul>
+</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Non-administrative processes using debug privileges</li>
+<li>Privilege use from unexpected executables (not debuggers, admin tools)</li>
+<li>Privilege escalation sequences: Enable privilege → Access process → Duplicate token</li>
+<li>Multiple privilege uses in rapid succession from same process</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>PowerShell, scripting engines, or Office applications using <code>SeDebugPrivilege</code></li>
+<li>Web application processes (w3wp.exe) using impersonation privileges outside normal operation</li>
+<li>User applications enabling <code>SeTcbPrivilege</code> (rare outside Windows components)</li>
+<li>Privilege use patterns: <code>SeDebugPrivilege</code> enabled → lsass.exe accessed → <code>SeImpersonatePrivilege</code> used</li>
+<li>Commands: <code>privilege::debug</code> (Mimikatz), <code>AdjustTokenPrivileges</code> API calls</li>
+<li>Tool execution: <code>procdump.exe</code>, <code>PsExec.exe</code>, <code>Invoke-Mimikatz</code> correlating with privilege events</li>
+<li>Multiple privilege adjustments from temporary directories (%TEMP%, %APPDATA%)</li>
+<li>Service accounts using privileges outside their defined scope</li>
+</ul>
+<hr>
+<h3>6. Processes with Mismatched Integrity Levels and Security Contexts</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process Creation) - Compare <code>IntegrityLevel</code> values across process tree
+<ul>
+<li>Values: Low, Medium, High, System</li>
+<li>Parent-child integrity mismatches</li>
+</ul>
+</li>
+<li>Event ID 10 (Process Access) - Cross-integrity process access</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4688 (Process Creation) - <code>TokenElevationType</code> and <code>MandatoryLabel</code> fields
+<ul>
+<li>Type 1: Default token (non-elevated)</li>
+<li>Type 2: Elevated token (UAC prompt)</li>
+<li>Type 3: Full token (built-in administrator)</li>
+</ul>
+</li>
+</ul>
+<p><strong>EDR/Process Monitoring:</strong></p>
+<ul>
+<li>Security descriptor integrity level monitoring</li>
+<li>Token mandatory label inspection</li>
+<li>Process security context validation</li>
+</ul>
+<p><strong>Look for:</strong></p>
+<ul>
+<li>Medium integrity parent spawning High or System integrity children without UAC</li>
+<li>User applications running with SYSTEM integrity</li>
+<li>Processes with integrity levels inconsistent with their signing or origin</li>
+<li>Token elevation without corresponding UAC consent events (Event ID 4703)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>User-initiated processes (Medium) spawning SYSTEM processes without service installation</li>
+<li>Low integrity processes (sandboxed applications) creating High integrity children</li>
+<li>Process trees showing escalation: Medium → High → SYSTEM without authentication</li>
+<li>Office applications (winword.exe, excel.exe) running as SYSTEM</li>
+<li>Browser processes spawning High integrity child processes</li>
+<li>Commands executed from Medium integrity spawning SYSTEM shells</li>
+<li>Processes in user directories (%APPDATA%, %LOCALAPPDATA%) running as SYSTEM</li>
+<li>Remote access tools (TeamViewer, AnyDesk) spawning processes with elevated integrity</li>
+<li>Token integrity modifications via <code>SetTokenInformation()</code> API</li>
+</ul>
+<hr>
+<h3>7. Named Pipe Impersonation for Token Theft</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 17 (Pipe Created) - Creation of named pipes by suspicious processes</li>
+<li>Event ID 18 (Pipe Connected) - Connections to named pipes from privileged processes</li>
+<li>Event ID 1 (Process Creation) - Processes creating or connecting to pipes</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4673 (Sensitive Privilege Use) - <code>SeImpersonatePrivilege</code> usage correlating with pipe operations</li>
+<li>Event ID 5145 (Network Share Access) - Access to IPC$ share and named pipes</li>
+</ul>
+<p><strong>EDR/API Monitoring:</strong></p>
+<ul>
+<li>API calls: <code>CreateNamedPipe()</code>, <code>ConnectNamedPipe()</code>, <code>ImpersonateNamedPipeClient()</code></li>
+<li>Named pipe operations followed by token manipulation</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>User processes creating named pipes in unusual namespaces</li>
+<li>Pipe servers impersonating clients with elevated privileges</li>
+<li>Service processes connecting to user-created named pipes</li>
+<li>Pipe operations correlating with privilege escalation</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Named pipes with suspicious patterns: <code>\\.\pipe\MSSE-*</code>, <code>\\.\pipe\postex_*</code> (Cobalt Strike)</li>
+<li>User applications creating pipes and waiting for SYSTEM process connections</li>
+<li>Commands: <code>NamedPipeImpersonation</code>, exploitation of <code>Print Spooler</code> via named pipes</li>
+<li>Pipe impersonation tools: <code>RottenPotato</code>, <code>JuicyPotato</code>, <code>RoguePotato</code></li>
+<li>PrintSpooler service (<code>spoolsv.exe</code>) connecting to unexpected named pipes</li>
+<li>RPC over named pipes from non-administrative contexts</li>
+<li>Pipe names matching exploit patterns: <code>\\.\pipe\random_string</code>, <code>\\.\pipe\spoolss</code></li>
+<li>Rapid pipe creation and destruction cycles</li>
+<li>Local privilege escalation exploits (CVE-2019-1069, CVE-2019-1405) using pipe impersonation</li>
+</ul>
+<hr>
+<h3>8. Token Manipulation via Known Attack Tools and Frameworks</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process Creation) - Execution of token manipulation tools</li>
+<li>Event ID 7 (Image Loaded) - Loading of tool-specific DLLs</li>
+<li>Event ID 11 (File Create) - Creation of tool artifacts on disk</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script Block Logging) - PowerShell token manipulation modules
+<ul>
+<li>Scripts: <code>Invoke-TokenManipulation</code>, <code>Invoke-PrivescCheck</code>, <code>PowerUp.ps1</code></li>
+<li>Functions: <code>Get-System</code>, <code>Get-ProcessToken</code>, <code>Enable-Privilege</code></li>
+</ul>
+</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4688 (Process Creation) - Tool execution with suspicious command lines</li>
+<li>Event ID 4673 (Sensitive Privilege Use) - Correlate with tool execution</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Command and Control (C2) traffic patterns associated with token operations</li>
+<li>Cobalt Strike beacon traffic, Metasploit staging, Empire C2 channels</li>
+</ul>
+<p><strong>Look for:</strong></p>
+<ul>
+<li>Known tool file names, hashes, or YARA signatures</li>
+<li>PowerShell modules loaded from GitHub repositories (PowerSploit, Empire, Nishang)</li>
+<li>Memory injection techniques preceding token operations</li>
+<li>C2 traffic correlating with privilege escalation activities</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><strong>Mimikatz indicators:</strong>
+<ul>
+<li>Commands: <code>token::elevate</code>, <code>token::run</code>, <code>token::list</code>, <code>privilege::debug</code></li>
+<li>Process: <code>mimikatz.exe</code>, <code>mimilib.dll</code> loaded</li>
+<li>PowerShell: <code>Invoke-Mimikatz -Command privilege::debug</code></li>
+</ul>
+</li>
+<li><strong>Cobalt Strike indicators:</strong>
+<ul>
+<li>Commands: <code>steal_token</code>, <code>make_token</code>, <code>getsystem</code>, <code>spawn</code>, <code>spawnas</code></li>
+<li>Named pipes: <code>\\.\pipe\MSSE-*</code>, <code>\\.\pipe\postex_*</code>, <code>\\.\pipe\msagent_*</code></li>
+<li>Beacon artifacts in memory</li>
+</ul>
+</li>
+<li><strong>Metasploit indicators:</strong>
+<ul>
+<li>Meterpreter commands: <code>getsystem</code>, <code>steal_token</code>, <code>getprivs</code>, <code>use incognito</code></li>
+<li>Process: <code>metsrv.dll</code>, staged payloads</li>
+</ul>
+</li>
+<li><strong>PowerShell Empire indicators:</strong>
+<ul>
+<li>Modules: <code>Invoke-TokenManipulation</code>, <code>Invoke-PrivescCheck</code>, agent commands</li>
+</ul>
+</li>
+<li><strong>Incognito tool:</strong>
+<ul>
+<li>Commands: <code>list_tokens</code>, <code>impersonate_token</code></li>
+</ul>
+</li>
+<li><strong>Custom tools:</strong>
+<ul>
+<li><code>TokenPlayer.exe</code>, <code>SweetPotato.exe</code>, token manipulation POCs from GitHub</li>
+</ul>
+</li>
+<li>Reflective DLL injection preceding token operations</li>
+<li>Process hollowing with token assignment</li>
+</ul>
+<hr>
+<h3>9. Unusual Logon Types and Authentication Patterns</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4624 (Successful Logon) - Analyze LogonType field:
+<ul>
+<li><strong>LogonType 2</strong> (Interactive) - Physical or RDP logon</li>
+<li><strong>LogonType 3</strong> (Network) - Network resource access</li>
+<li><strong>LogonType 4</strong> (Batch) - Scheduled tasks</li>
+<li><strong>LogonType 5</strong> (Service) - Service startup</li>
+<li><strong>LogonType 7</strong> (Unlock) - Workstation unlock</li>
+<li><strong>LogonType 9</strong> (NewCredentials) - RunAs with /netonly</li>
+<li><strong>LogonType 10</strong> (RemoteInteractive) - RDP/Terminal Services</li>
+<li><strong>LogonType 11</strong> (CachedInteractive) - Cached credential logon</li>
+</ul>
+</li>
+<li>Event ID 4648 (Explicit Credential Logon) - RunAs or secondary logon service usage</li>
+<li>Event ID 4672 (Special Privileges Assigned) - Administrative logon session</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>LogonType 9 (NewCredentials) from non-administrative users</li>
+<li>Multiple LogonType 3 events without corresponding network activity</li>
+<li>Logon events lacking source network address or workstation name</li>
+<li>Authentication patterns inconsistent with user behavior baselines</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>LogonType 9 followed immediately by privileged operations without network authentication</li>
+<li>Logon events with null or <code>0.0.0.0</code> source IP for network logons</li>
+<li>Multiple failed logon attempts (4625) followed by successful token-based access</li>
+<li>Interactive logon (Type 2) from service accounts</li>
+<li>Account logons outside normal working hours correlating with token operations</li>
+<li>Logon session IDs reused or duplicated across different processes</li>
+<li>Authentication to localhost from privileged accounts without legitimate admin activity</li>
+<li>Concurrent logon sessions from same user with different privilege levels</li>
+<li>Logon Type 3 from localhost immediately following privilege escalation</li>
+<li>Pass-the-Hash indicators: LogonType 3 with NTLM authentication, no prior Type 2 logon</li>
+</ul>
+<hr>
+<h3>10. Cross-Session Token Operations and Remote Token Manipulation</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4624 (Logon) - Session ID analysis for cross-session activity</li>
+<li>Event ID 4778/4779 (Session Reconnect/Disconnect) - Terminal Services session changes</li>
+<li>Event ID 4688 (Process Creation) - Processes operating in different session contexts</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process Creation) - <code>LogonId</code> field showing session hopping</li>
+<li>Event ID 10 (Process Access) - Cross-session process access patterns</li>
+<li>Event ID 3 (Network Connection) - Remote token operations via SMB/RPC</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>SMB traffic (port 445) with suspicious RPC calls</li>
+<li>DCOM connections (port 135) for remote process manipulation</li>
+<li>WMI traffic indicating remote command execution</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Processes accessing tokens in different Terminal Services sessions</li>
+<li>Remote token duplication across systems</li>
+<li>Session 0 (services) interaction with user sessions (Session 1+)</li>
+<li>Token operations via remote procedure calls</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>User processes in Session 1 accessing SYSTEM tokens in Session 0</li>
+<li>Token duplication from disconnected RDP sessions (4779 followed by token access)</li>
+<li>Remote process creation using stolen tokens: <code>PsExec</code>, <code>WMIC</code>, <code>WinRM</code> with token assignment</li>
+<li>Commands: <code>PsExec.exe \\remote-host -s cmd.exe</code> (run as SYSTEM)</li>
+<li>WMI process creation with token impersonation: <code>Invoke-WmiMethod -Class Win32_Process</code></li>
+<li>Token operations following successful lateral movement (Event ID 4624 LogonType 3)</li>
+<li>Cross-session process injection (Session 0 → Session 1)</li>
+<li>Service processes creating GUI applications in user sessions</li>
+<li>Token theft from locked sessions (LogonType 7 unlock events)</li>
+<li>Remote registry access followed by token operations</li>
+<li>DCOM-based lateral movement with token impersonation</li>
+<li>Token replication across multiple systems in short timeframes</li>
+</ul>
+<hr>
+<h1>Access Token Manipulation (T1134) Investigation Checklist</h1>
+
+<h2>1. Process Handle Operations &amp; Token Theft</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4673 for <code>SeImpersonatePrivilege</code>, <code>SeAssignPrimaryTokenPrivilege</code>, <code>SeTcbPrivilege</code> usage</label></li>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 10 for process access to <code>lsass.exe</code>, <code>winlogon.exe</code>, <code>services.exe</code> with <code>GrantedAccess</code> 0x1410/0x1010/0x1400</label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688/Sysmon Event ID 1 for processes with mismatched <code>IntegrityLevel</code> and <code>User</code> fields</label></li>
+  <li><label><input type="checkbox"> Identify non-admin processes accessing SYSTEM process tokens (web apps, scripts, Office applications)</label></li>
+  <li><label><input type="checkbox"> Look for Invoke-TokenManipulation, steal_token (Cobalt Strike), or incognito.exe in command lines</label></li>
+</ul>
+
+<h2>2. Process Creation with Stolen Tokens</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4688 for <code>Token Elevation Type</code> field showing elevation without UAC (Type 2 or 3)</label></li>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 1 for parent-child processes with different user contexts or integrity levels</label></li>
+  <li><label><input type="checkbox"> Search for Event ID 4624 LogonType 9 (NewCredentials) indicating runas usage</label></li>
+  <li><label><input type="checkbox"> Identify SYSTEM child processes spawned from Medium integrity parents without service context</label></li>
+  <li><label><input type="checkbox"> Correlate process creation with lack of authentication events (Event ID 4624/4648)</label></li>
+</ul>
+
+<h2>3. Explicit Credentials &amp; Token Creation</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4648 for explicit credential logon attempts from non-administrative users</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4624 LogonType 9 followed by privileged operations</label></li>
+  <li><label><input type="checkbox"> Search PowerShell Event ID 4104 for Make-Token, Invoke-TokenManipulation, New-Token</label></li>
+  <li><label><input type="checkbox"> Identify runas.exe execution spawning domain admin processes from standard workstations</label></li>
+  <li><label><input type="checkbox"> Look for token creation following credential dumping (lsass.exe access)</label></li>
+</ul>
+
+<h2>4. Parent PID Spoofing Detection</h2>
+<ul>
+  <li><label><input type="checkbox"> Analyze Sysmon Event ID 1 for <code>ParentProcessId</code> pointing to terminated or non-existent processes</label></li>
+  <li><label><input type="checkbox"> Check for critical processes with illogical parents (cmd.exe parented to explorer.exe in service context)</label></li>
+  <li><label><input type="checkbox"> Correlate Sysmon Event ID 5 (process termination) with Event ID 1 to find orphaned children</label></li>
+  <li><label><input type="checkbox"> Identify svchost.exe with parent other than services.exe</label></li>
+  <li><label><input type="checkbox"> Search for process creation timestamps predating parent process creation</label></li>
+</ul>
+
+<h2>5. Sensitive Privilege Usage</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4673 for SeDebugPrivilege use from PowerShell, Office apps, or web applications</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4672 for special privileges assigned outside normal admin logons</label></li>
+  <li><label><input type="checkbox"> Identify privilege enabling sequences: SeDebugPrivilege → lsass.exe access → SeImpersonatePrivilege</label></li>
+  <li><label><input type="checkbox"> Search for SeTcbPrivilege (Act as OS) usage from non-Windows processes</label></li>
+  <li><label><input type="checkbox"> Look for multiple rapid privilege adjustments from temporary directories (%TEMP%, %APPDATA%)</label></li>
+</ul>
+
+<h2>6. Integrity Level Mismatches</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 1 <code>IntegrityLevel</code> field for Medium parents spawning High/SYSTEM children</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4688 <code>TokenElevationType</code> showing elevation without UAC consent (Event ID 4703)</label></li>
+  <li><label><input type="checkbox"> Identify user-initiated processes running with SYSTEM integrity</label></li>
+  <li><label><input type="checkbox"> Search for Office applications (winword.exe, excel.exe) or browsers running as SYSTEM</label></li>
+  <li><label><input type="checkbox"> Look for processes in user directories with High or SYSTEM integrity levels</label></li>
+</ul>
+
+<h2>7. Named Pipe Impersonation</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 17/18 for suspicious named pipe creation and connections</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4673 for SeImpersonatePrivilege correlating with pipe operations</label></li>
+  <li><label><input type="checkbox"> Search for named pipes matching exploit patterns: <code>\\.\pipe\MSSE-*</code>, <code>\\.\pipe\postex-*</code>, <code>\\.\pipe\spoolss</code></label></li>
+  <li><label><input type="checkbox"> Identify Print Spooler (spoolsv.exe) connections to unexpected named pipes</label></li>
+  <li><label><input type="checkbox"> Look for RottenPotato, JuicyPotato, RoguePotato tool execution</label></li>
+</ul>
+
+<h2>8. Attack Tool Artifacts</h2>
+<ul>
+  <li><label><input type="checkbox"> Search PowerShell Event ID 4104 for: Invoke-Mimikatz, Invoke-TokenManipulation, PowerUp.ps1, Get-System</label></li>
+  <li><label><input type="checkbox"> Check Event ID 4688/Sysmon Event ID 1 for: mimikatz.exe, procdump -ma lsass, incognito commands</label></li>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 7 for mimilib.dll, metsrv.dll, or other tool-specific DLLs</label></li>
+  <li><label><input type="checkbox"> Identify Cobalt Strike indicators: steal_token, make_token, getsystem, spawn commands</label></li>
+  <li><label><input type="checkbox"> Search for Metasploit Meterpreter commands: getsystem, steal_token, getprivs, use incognito</label></li>
+</ul>
+
+<h2>9. Authentication Pattern Anomalies</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4624 for LogonType 9 (NewCredentials) from standard users</label></li>
+  <li><label><input type="checkbox"> Check for LogonType 3 events without corresponding network connections</label></li>
+  <li><label><input type="checkbox"> Identify logon events with null source IP (0.0.0.0) or missing workstation names</label></li>
+  <li><label><input type="checkbox"> Search for multiple Event ID 4625 failures followed by token-based access without Event ID 4624</label></li>
+  <li><label><input type="checkbox"> Look for off-hours administrative logons correlating with token manipulation events</label></li>
+</ul>
+
+<h2>10. Cross-Session &amp; Remote Token Operations</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 1 <code>LogonId</code> field for processes hopping between sessions</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4778/4779 for session reconnect/disconnect followed by token access</label></li>
+  <li><label><input type="checkbox"> Identify Session 0 (services) processes accessing user session (Session 1+) tokens</label></li>
+  <li><label><input type="checkbox"> Search for remote token operations: PsExec \host -s, Invoke-WmiMethod with token assignment</label></li>
+  <li><label><input type="checkbox"> Look for token theft from locked or disconnected RDP sessions</label></li>
+</ul>
+
+
+</body>
+</html>

