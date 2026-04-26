@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Archive Collected Data (T1560)</title>
+
+<style>
+  :root{
+    --bg: #f5f5f5;
+    --card: #fff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --brand: #2563eb;
+    --border: #e5e7eb;
+    --focus: #fb923c;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0b0f14; --card:#111827; --text:#e5e7eb; --muted:#94a3b8;
+      --brand:#60a5fa; --border:#1f2937; --focus:#fdba74;
+    }
+  }
+  html,body{height:100%}
+  body{
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif;
+    margin:0; background:var(--bg); color:var(--text); line-height:1.6;
+  }
+  .wrap{max-width:1000px; margin:0 auto; padding:24px}
+  a{color:var(--brand)}
+  a[target="_blank"]::after{content:" ↗"; font-size:.85em; color:var(--muted)}
+  .skip-link{
+    position:absolute; left:-999px; top:auto; width:1px; height:1px; overflow:hidden;
+  }
+  .skip-link:focus{position:static; width:auto; height:auto; padding:.5rem; background:var(--card); border:1px solid var(--border)}
+  header{position:sticky; top:0; z-index:10; backdrop-filter:saturate(180%) blur(8px)}
+  .toolbar{
+    display:flex; gap:12px; align-items:center; padding:12px 24px;
+    border-bottom:1px solid var(--border); background-color:color-mix(in srgb, var(--card) 92%, transparent);
+  }
+  .toolbar h1{font-size:1.25rem; margin:0; flex:1}
+  .toolbar input[type="search"]{
+    max-width:340px; padding:.5rem .75rem; border:1px solid var(--border); border-radius:8px;
+    background:var(--card); color:var(--text)
+  }
+  .toolbar button{
+    padding:.5rem .75rem; border:1px solid var(--border); border-radius:8px;
+    background:var(--card); color:var(--text); cursor:pointer
+  }
+  .toolbar button:focus-visible{outline:3px solid var(--focus); outline-offset:2px}
+
+  nav.toc{
+    margin:16px 0 24px; padding:12px; background:var(--card); border:1px solid var(--border);
+    border-radius:10px;
+  }
+  nav.toc ul{margin:0; padding-left:18px}
+  nav.toc li{margin:.25rem 0}
+
+  h2{
+    color:var(--text); border-bottom:2px solid var(--brand);
+    padding-bottom:6px; margin-top:28px;
+  }
+  details.section{
+    background:var(--card); border:1px solid var(--border); border-radius:12px; margin:16px 0; overflow:hidden
+  }
+  details.section > summary{
+    list-style:none; cursor:pointer; padding:12px 16px; font-weight:600;
+  }
+  details.section > summary::-webkit-details-marker{display:none}
+  details.section[open] > summary{border-bottom:5px solid var(--border)}
+  details.section > div{padding:16px}
+  ul{padding-left:18px}
+  ul.checklist{list-style:none; margin:0; padding:8px 12px}
+  .item{
+    display:flex; gap:10px; align-items:flex-start; background:transparent; padding:8px; border-radius:8px;
+  }
+  .item:hover{background-color:color-mix(in srgb, var(--brand) 8%, transparent)}
+  .item input[type="checkbox"]{flex-shrink:0; margin-top:3px; cursor:pointer}
+  .item label{cursor:pointer}
+  code{
+    background:color-mix(in srgb, var(--text) 8%, transparent); padding:2px 6px;
+    border-radius:4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size:.9em; word-break:break-word;
+  }
+
+  hr{border:0; border-top:1px solid var(--border); margin:16px 0}
+
+  @media print{
+    header, .toolbar, nav.toc{display:none}
+    body{background:#fff; color:#000}
+    details.section{border:none}
+    details.section[open] > summary, details.section > summary{border:none}
+    details.section{page-break-inside:avoid}
+  }
+
+  @media (prefers-reduced-motion:no-preference){
+    details.section{transition: box-shadow .2s ease}
+    details.section:hover{box-shadow:0 2px 20px color-mix(in srgb, var(--brand) 12%, transparent)}
+  }
+</style>
+</head>
+
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header>
+  <div class="toolbar">
+    <h1>Archive Collected Data: <a href="https://attack.mitre.org/techniques/T1560/" target="_blank" rel="noopener noreferrer">T1560</a></h1>
+    <input id="filter" type="search" placeholder="Filter checklist…" aria-label="Filter checklist items">
+    <button id="expand">Expand all</button>
+    <button id="collapse">Collapse all</button>
+    <button id="clear">Clear checks</button>
+  </div>
+</header>
+
+<main id="main" class="wrap" tabindex="-1">
+  <nav class="toc" aria-label="Table of contents">
+    <strong>Sections</strong>
+    <ul>
+      <li><a href="#sec-detection">Detection explanation</a></li>
+      <li><a href="#sec-indicators">Key detection indicators & areas</a></li>
+      <li><a href="#sec-checklist">Investigation Checklist</a></li>
+    </ul>
+  </nav>
+
+  <section aria-labelledby="sec-detection">
+    <h2 id="sec-detection">Detection Explanation</h2>
+    <p>Archive Collected Data involves adversaries compressing or encrypting data before exfiltration to reduce file size, evade detection, or encrypt sensitive information. This technique is commonly used during the collection and exfiltration phases of an attack to package stolen data for efficient transfer and to obfuscate file contents from data loss prevention (DLP) systems and security monitoring tools.</p>
+    <p>Attackers archive collected data because compression reduces bandwidth requirements and transfer time, while encryption can bypass content-based detection mechanisms that scan for sensitive keywords or patterns. Common methods include using native operating system utilities (T1560.001) like 7-Zip, WinRAR, tar, and zip, as well as built-in utilities like Windows Compress-Archive cmdlet or Linux tar with compression. Adversaries may also use custom or less common archiving tools, password-protected archives, or split archives to evade detection and complicate forensic analysis.</p>
+    <p>Successful data archiving enables attackers to efficiently exfiltrate large volumes of data while minimizing network footprint, bypass DLP controls that cannot inspect encrypted or password-protected archives, and organize stolen data for systematic exfiltration. This technique often indicates late-stage attack activity where adversaries have already identified and collected target data and are preparing for exfiltration. The impact includes theft of intellectual property, customer data, financial records, credentials, and other sensitive information that can be sold, ransomed, or used for further attacks.</p>
+    <p>Detection requires monitoring for archiving utility execution, tracking creation of compressed or encrypted files, identifying unusual archive sizes or locations, and correlating archiving activity with data collection and exfiltration behaviors. Organizations should establish baselines for legitimate archive creation patterns and alert on anomalies such as archiving of sensitive directories, large archive creation during off-hours, use of command-line archiving tools by non-administrative users, or archives created immediately before network transfer activity.</p>
+  </section>
+
+  <section aria-labelledby="sec-indicators">
+    <h2 id="sec-indicators">Key Detection Indicators & Areas to Investigate</h2>
+    <h3>Summary of Indicators</h3>
+    <ol>
+      <li>Execution of archive and compression utilities (T1560.001)</li>
+      <li>Creation of compressed archive files in unusual locations (T1560.001)</li>
+      <li>Password-protected or encrypted archive creation</li>
+      <li>PowerShell-based compression and archiving</li>
+      <li>Large archive files created during off-hours</li>
+      <li>Archives created in staging directories before exfiltration</li>
+      <li>Command-line compression with suspicious parameters</li>
+      <li>Archives containing sensitive file types or directories</li>
+      <li>Split or multi-volume archive creation</li>
+      <li>Archive creation followed by network transfer activity</li>
+    </ol>
+  </section>
+
+  <details class="section" id="sec-1">
+    <summary>1. Execution of Archive and Compression Utilities</summary>
+    <div>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4688 (Process creation) - Archive utility execution</li>
+        <li>Key fields: <code>NewProcessName</code>, <code>CommandLine</code>, <code>ParentProcessName</code>, <code>SubjectUserName</code></li>
+      </ul>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 1 (Process creation) - Archive tool execution with detailed command lines</li>
+        <li>Key fields: <code>Image</code>, <code>CommandLine</code>, <code>ParentImage</code>, <code>User</code>, <code>CurrentDirectory</code></li>
+      </ul>
+      <p><strong>Common Archive Utilities:</strong></p>
+      <ul>
+        <li><code>7z.exe</code>, <code>7za.exe</code> (7-Zip command line)</li>
+        <li><code>WinRAR.exe</code>, <code>Rar.exe</code>, <code>WinRar.exe</code></li>
+        <li><code>zip.exe</code>, <code>unzip.exe</code></li>
+        <li><code>tar.exe</code> (Windows 10/11 built-in)</li>
+        <li><code>compact.exe</code> (Windows compression utility)</li>
+        <li><code>makecab.exe</code> (Cabinet file creation)</li>
+        <li><code>expand.exe</code> (Cabinet extraction)</li>
+      </ul>
+      <p><strong>Command-Line Patterns:</strong></p>
+      <ul>
+        <li><code>7z.exe a -p&lt;password&gt; archive.7z C:\SensitiveData\</code></li>
+        <li><code>rar.exe a -hp&lt;password&gt; data.rar C:\Users\*\Documents\</code></li>
+        <li><code>tar.exe -czf archive.tar.gz /path/to/data</code></li>
+        <li><code>powershell Compress-Archive -Path C:\Data -DestinationPath archive.zip</code></li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Archive utilities executed by non-administrative users</li>
+        <li>Archiving tools run from temporary or unusual directories</li>
+        <li>Command lines targeting sensitive directories (Documents, Desktop, Users)</li>
+        <li>Archive creation with password or encryption parameters</li>
+        <li>Tools executed during off-hours or by service accounts</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li><code>7z.exe</code> or <code>rar.exe</code> with <code>-p</code> parameter (password protection) or <code>-hp</code> (encrypt headers)</li>
+        <li>Archive utilities executed from <code>%TEMP%</code>, <code>%APPDATA%</code>, or <code>C:\Users\Public\</code></li>
+        <li>Command lines archiving entire user directories: <code>C:\Users\*</code>, <code>%USERPROFILE%\Documents\</code></li>
+        <li>Archiving system or sensitive directories: <code>C:\Windows\System32\</code>, <code>C:\Program Files\</code>, registry hives</li>
+        <li>Tools executed by user accounts that don't typically perform archiving</li>
+        <li>Archive utilities spawned from Office applications, browsers, or script interpreters</li>
+        <li>Renamed archive utilities (e.g., <code>svchost.exe</code> that's actually 7z.exe)</li>
+        <li>Archiving tools with output redirected to network shares or removable media</li>
+        <li>Multiple archive operations in rapid succession across different directories</li>
+        <li>Archive utilities executed during non-business hours (00:00-06:00)</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-2">
+    <summary>2. Creation of Compressed Archive Files in Unusual Locations</summary>
+    <div>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 11 (File created) - Archive file creation</li>
+        <li>Key fields: <code>TargetFilename</code>, <code>Image</code> (creating process), <code>User</code></li>
+        <li>File extensions: <code>.zip</code>, <code>.rar</code>, <code>.7z</code>, <code>.tar</code>, <code>.gz</code>, <code>.bz2</code>, <code>.cab</code>, <code>.tgz</code></li>
+      </ul>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4663 (Access attempted to object) - File write operations for archives</li>
+        <li>Event ID 4656 (Handle to object requested) - File creation handles</li>
+      </ul>
+      <p><strong>File Paths to Monitor:</strong></p>
+      <ul>
+        <li><code>C:\Users\Public\</code> - Publicly accessible staging location</li>
+        <li><code>%TEMP%</code> or <code>%TMP%</code> - Temporary directories</li>
+        <li><code>C:\ProgramData\</code> - Application data staging</li>
+        <li><code>C:\Windows\Temp\</code> - System temporary directory</li>
+        <li><code>C:\Perflogs\</code> - Often abused staging location</li>
+        <li><code>C:\Intel\</code> - Mimics legitimate directory names</li>
+        <li>Root of drives: <code>C:\</code>, <code>D:\</code> - Unusual archive locations</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Archive files created in non-standard locations</li>
+        <li>Large archive files created rapidly</li>
+        <li>Archives with suspicious or generic names</li>
+        <li>Multiple archives created in same directory</li>
+        <li>Archive creation in web server or database directories</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Archive files created in <code>C:\Users\Public\</code>, <code>C:\ProgramData\</code>, or <code>C:\Windows\Temp\</code></li>
+        <li>Large archives (&gt;100MB) created in temporary directories</li>
+        <li>File names suggesting data collection: <code>data.zip</code>, <code>backup.rar</code>, <code>files.7z</code>, <code>documents.zip</code></li>
+        <li>Archives with timestamps or date-based names: <code>2025-01-15.zip</code>, <code>backup_20250115.rar</code></li>
+        <li>Multiple archives with sequential numbering: <code>part1.zip</code>, <code>part2.zip</code>, <code>part3.zip</code></li>
+        <li>Archives created in web server directories: <code>C:\inetpub\wwwroot\</code>, <code>/var/www/html/</code></li>
+        <li>Archive files in database backup directories created by non-database processes</li>
+        <li>Archives created in removable media root directories</li>
+        <li>Files with double extensions: <code>invoice.pdf.zip</code>, <code>report.docx.rar</code></li>
+        <li>Archives created in network share roots or sync folders (Dropbox, OneDrive paths)</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-3">
+    <summary>3. Password-Protected or Encrypted Archive Creation</summary>
+    <div>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 1 (Process creation) - Archive commands with encryption parameters</li>
+        <li>Event ID 11 (File created) - Encrypted archive files</li>
+      </ul>
+      <p><strong>Command-Line Indicators:</strong></p>
+      <ul>
+        <li>7-Zip: <code>-p&lt;password&gt;</code>, <code>-hp&lt;password&gt;</code>, <code>-mhe=on</code> (encrypt headers)</li>
+        <li>WinRAR: <code>-hp&lt;password&gt;</code>, <code>-p&lt;password&gt;</code></li>
+        <li>Zip: <code>-e</code>, <code>-P &lt;password&gt;</code></li>
+        <li>OpenSSL: <code>openssl enc -aes-256-cbc -in file.zip -out file.zip.enc</code></li>
+      </ul>
+      <p><strong>PowerShell Patterns:</strong></p>
+      <ul>
+        <li><code>Compress-Archive</code> with password protection scripts</li>
+        <li>Custom PowerShell encryption before or after archiving</li>
+        <li>AES encryption cmdlets combined with compression</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Archive utilities executed with password or encryption parameters</li>
+        <li>Archives created then encrypted with separate tools</li>
+        <li>Use of encryption utilities on archive files</li>
+        <li>Password-protected archives that bypass DLP inspection</li>
+        <li>Encrypted archives staged before exfiltration</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Command lines containing <code>-p</code>, <code>-hp</code>, <code>-password</code>, or similar encryption flags</li>
+        <li><code>7z.exe a -p -mhe=on</code> (encrypts file names and content)</li>
+        <li>Archive creation immediately followed by encryption tool execution</li>
+        <li><code>openssl</code>, <code>gpg</code>, or other encryption tools processing archive files</li>
+        <li>PowerShell scripts combining <code>Compress-Archive</code> with encryption functions</li>
+        <li>Archives with double extensions indicating encryption: <code>data.zip.aes</code>, <code>files.7z.enc</code></li>
+        <li>Encryption tools executed immediately after archive utility</li>
+        <li>Password-protected archives created in staging directories</li>
+        <li>Archives encrypted with strong algorithms (AES-256) suggesting data protection</li>
+        <li>Archive and encryption operations occurring during off-hours</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-4">
+    <summary>4. PowerShell-Based Compression and Archiving</summary>
+    <div>
+      <p><strong>PowerShell Logs:</strong></p>
+      <ul>
+        <li>Event ID 4104 (Script block logging) - PowerShell compression commands</li>
+        <li>Event ID 4103 (Module logging) - Compress-Archive cmdlet usage</li>
+        <li>Event ID 400 (PowerShell engine state) - PowerShell session activity</li>
+      </ul>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4688 (Process creation) - PowerShell execution with compression</li>
+      </ul>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 1 (Process creation) - PowerShell with archive-related command lines</li>
+        <li>Event ID 11 (File created) - Archives created by PowerShell processes</li>
+      </ul>
+      <p><strong>PowerShell Cmdlets and Patterns:</strong></p>
+      <ul>
+        <li><code>Compress-Archive -Path C:\Data -DestinationPath archive.zip</code></li>
+        <li><code>Compress-Archive -Path C:\Users\* -DestinationPath users.zip -CompressionLevel Optimal</code></li>
+        <li><code>[System.IO.Compression.ZipFile]::CreateFromDirectory("C:\Data", "data.zip")</code></li>
+        <li>Custom compression using .NET classes</li>
+        <li>Base64-encoded compression commands</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>PowerShell compression targeting sensitive directories</li>
+        <li>Recursive archiving of user data or system folders</li>
+        <li>Compression combined with encryption or obfuscation</li>
+        <li>Archives created then immediately moved or transferred</li>
+        <li>PowerShell compression in automated scripts or scheduled tasks</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Script blocks containing <code>Compress-Archive</code> targeting <code>C:\Users\</code>, <code>Documents</code>, <code>Desktop</code></li>
+        <li>PowerShell archiving entire user profiles or multiple user directories</li>
+        <li><code>[System.IO.Compression.ZipFile]</code> .NET methods in scripts</li>
+        <li>Base64-encoded PowerShell commands decoding to compression operations</li>
+        <li>PowerShell compression with output to network shares or cloud storage paths</li>
+        <li>Compress-Archive with <code>-Force</code> parameter overwriting existing archives</li>
+        <li>PowerShell scripts combining data collection, archiving, and network transfer</li>
+        <li>Compression operations in PowerShell run via scheduled tasks or WMI</li>
+        <li>Archives created by PowerShell spawned from Office macros or browsers</li>
+        <li>PowerShell compression scripts downloaded from external sources then executed</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-5">
+    <summary>5. Large Archive Files Created During Off-Hours</summary>
+    <div>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 11 (File created) - Large archive creation events</li>
+        <li>Monitor file size and creation timestamp</li>
+        <li>Key fields: <code>TargetFilename</code>, <code>CreationUtcTime</code>, <code>User</code></li>
+      </ul>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4663 (Access attempted to object) - Large file write operations</li>
+        <li>Correlate with timestamp and user context</li>
+      </ul>
+      <p><strong>File Size Thresholds:</strong></p>
+      <ul>
+        <li>Archives &gt;100MB - Potentially significant data collection</li>
+        <li>Archives &gt;1GB - Large-scale data theft indicators</li>
+        <li>Archives &gt;10GB - Massive data exfiltration preparation</li>
+      </ul>
+      <p><strong>Time-Based Indicators:</strong></p>
+      <ul>
+        <li>Off-hours: 00:00-06:00 local time</li>
+        <li>Weekends and holidays</li>
+        <li>Outside user's typical work schedule</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Large archives created when users typically inactive</li>
+        <li>Archive creation by accounts during unusual hours</li>
+        <li>Rapid creation of multiple large archives</li>
+        <li>Archive size inconsistent with user's normal activities</li>
+        <li>Large archives in staging directories</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Archives &gt;500MB created between 00:00-06:00 local time</li>
+        <li>Multiple large archives (&gt;100MB each) created within 1-hour window</li>
+        <li>Archive creation during weekends by Monday-Friday employee accounts</li>
+        <li>Large archives created by service accounts or system processes</li>
+        <li>File sizes suggesting database dumps, entire directories, or bulk data collection</li>
+        <li>Archives created during maintenance windows when monitoring may be reduced</li>
+        <li>Large archive creation immediately after credential dumping or privilege escalation</li>
+        <li>Sequential large archives suggesting systematic data collection</li>
+        <li>Archive sizes corresponding to sensitive data repositories (document servers, databases)</li>
+        <li>Large archives created then immediately transferred to external storage</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-6">
+    <summary>6. Archives Created in Staging Directories Before Exfiltration</summary>
+    <div>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 11 (File created) - Archive creation in staging locations</li>
+        <li>Event ID 3 (Network connection) - Network activity from staging directories</li>
+        <li>Event ID 23 (File deleted) - Archive deletion after exfiltration</li>
+      </ul>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 5140 (Network share accessed) - Staging archives accessed via SMB</li>
+        <li>Event ID 4663 (Access attempted to object) - File access to staged archives</li>
+      </ul>
+      <p><strong>Common Staging Directories:</strong></p>
+      <ul>
+        <li><code>C:\Users\Public\</code></li>
+        <li><code>C:\ProgramData\</code></li>
+        <li><code>C:\Windows\Temp\</code></li>
+        <li><code>%TEMP%\</code> or <code>%APPDATA%\Temp\</code></li>
+        <li><code>C:\Perflogs\</code></li>
+        <li><code>C:\Intel\</code></li>
+        <li>Recycle Bin directories</li>
+        <li>Hidden directories in user profiles</li>
+      </ul>
+      <p><strong>Correlation Pattern:</strong></p>
+      <ul>
+        <li>Archive creation → Brief delay → Network transfer → Archive deletion</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Archives created in typical staging locations</li>
+        <li>Time gap between creation and network activity</li>
+        <li>Archives deleted shortly after network transfer</li>
+        <li>Multiple archives staged in same directory</li>
+        <li>Staging combined with encryption or password protection</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Archives created in <code>C:\Users\Public\</code> or <code>C:\ProgramData\</code> followed by network connections within 5-30 minutes</li>
+        <li>Archive creation (Event ID 11) followed by network share access (Event ID 5140) to external systems</li>
+        <li>Archives in staging directories accessed by web browsers or FTP clients</li>
+        <li>File deletion (Event ID 23) of archives within 1 hour of creation (covering tracks)</li>
+        <li>Multiple archives created in staging location then transferred sequentially</li>
+        <li>Archives with systematic naming in staging folders: <code>part1.zip</code>, <code>part2.zip</code>, <code>backup1.rar</code></li>
+        <li>Staging directories containing archives only temporarily (created, transferred, deleted)</li>
+        <li>Network connections to cloud storage or file sharing services from staging directory locations</li>
+        <li>Archives staged in hidden folders: <code>C:\Users\Public\.hidden\</code>, <code>C:\$Recycle.Bin\</code></li>
+        <li>FTP, SCP, or HTTP POST activity accessing files in staging directories</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-7">
+    <summary>7. Command-Line Compression with Suspicious Parameters</summary>
+    <div>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4688 (Process creation) - Command-line archive operations</li>
+        <li>Key fields: <code>CommandLine</code>, <code>ProcessName</code></li>
+      </ul>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 1 (Process creation) - Detailed command-line parameters</li>
+        <li>Key fields: <code>CommandLine</code>, <code>ParentCommandLine</code>, <code>Image</code></li>
+      </ul>
+      <p><strong>Suspicious Command-Line Parameters:</strong></p>
+      <ul>
+        <li>Recursive archiving: <code>-r</code>, <code>--recursive</code></li>
+        <li>Update mode: <code>-u</code>, <code>--update</code></li>
+        <li>Exclude patterns: <code>-x</code>, <code>--exclude</code></li>
+        <li>Split archives: <code>-v</code>, <code>--volume</code></li>
+        <li>Compression level: <code>-mx=9</code> (maximum compression)</li>
+        <li>Silent mode: <code>-y</code>, <code>--yes</code>, <code>-q</code>, <code>--quiet</code></li>
+      </ul>
+      <p><strong>Command-Line Examples:</strong></p>
+      <ul>
+        <li><code>7z.exe a -r -mx=9 -p -mhe=on -v100m archive.7z C:\Users\</code></li>
+        <li><code>rar.exe a -r -hp -m5 -v50m data.rar C:\*</code></li>
+        <li><code>tar -czf - /home /var | split -b 100M - backup.tar.gz.</code></li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Recursive archiving of large directory structures</li>
+        <li>Maximum compression settings (reduce transfer size)</li>
+        <li>Split archives for easier exfiltration</li>
+        <li>Silent or automated archive operations</li>
+        <li>Exclusion patterns hiding archive activity</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Recursive archiving of sensitive directories: <code>7z.exe a -r archive.zip C:\Users\</code></li>
+        <li>Maximum compression level: <code>-mx=9</code>, <code>-m5</code> (effort to minimize file size)</li>
+        <li>Split volume creation: <code>-v100m</code>, <code>-v50m</code> (splitting for easier transfer or evasion)</li>
+        <li>Silent/automated mode: <code>-y</code>, <code>-q</code> (suppress prompts, hide activity)</li>
+        <li>Archiving with exclusion patterns to avoid detection: <code>-x!*.log</code>, <code>-x!antivirus</code></li>
+        <li>Command lines archiving multiple sensitive locations in single operation</li>
+        <li>Archive utilities with output piped to network commands: <code>7z.exe a -so | curl -T -</code></li>
+        <li>Compression combined with immediate deletion of source files: <code>7z.exe a archive.zip files\ &amp;&amp; del /q files\*</code></li>
+        <li>Archive commands in batch scripts or scheduled tasks</li>
+        <li>Command lines using variables or obfuscation to hide target paths</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-8">
+    <summary>8. Archives Containing Sensitive File Types or Directories</summary>
+    <div>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 11 (File created) - Archive creation</li>
+        <li>Correlate with file system monitoring of source directories</li>
+      </ul>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4663 (Access attempted to object) - Access to sensitive files before archiving</li>
+        <li>Event ID 4656 (Handle to object requested) - File read operations</li>
+      </ul>
+      <p><strong>Sensitive Directories:</strong></p>
+      <ul>
+        <li><code>C:\Users\*\Documents\</code></li>
+        <li><code>C:\Users\*\Desktop\</code></li>
+        <li><code>C:\Users\*\Downloads\</code></li>
+        <li>Database directories: SQL Server, MySQL, PostgreSQL data folders</li>
+        <li>Application configuration directories with credentials</li>
+        <li>Source code repositories</li>
+        <li>Financial or HR system directories</li>
+      </ul>
+      <p><strong>Sensitive File Types:</strong></p>
+      <ul>
+        <li>Documents: <code>.docx</code>, <code>.xlsx</code>, <code>.pdf</code>, <code>.pptx</code></li>
+        <li>Databases: <code>.mdf</code>, <code>.bak</code>, <code>.sql</code>, <code>.db</code></li>
+        <li>Configuration files: <code>.config</code>, <code>.ini</code>, <code>.xml</code>, <code>.json</code></li>
+        <li>Credentials: <code>.kdbx</code>, <code>.key</code>, <code>.pem</code>, <code>.pfx</code></li>
+        <li>Source code: <code>.cs</code>, <code>.java</code>, <code>.py</code>, <code>.cpp</code></li>
+        <li>Archives of archives: <code>.zip.zip</code>, <code>.rar</code> containing other archives</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Archiving of entire user document directories</li>
+        <li>Database backup files included in archives</li>
+        <li>Configuration files with credentials archived</li>
+        <li>Source code or intellectual property archived</li>
+        <li>Multiple file types suggesting comprehensive data collection</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Archives created from <code>C:\Users\*\Documents\</code> or <code>C:\Users\*\Desktop\</code></li>
+        <li>Command lines targeting database directories: <code>7z.exe a backup.7z "C:\Program Files\Microsoft SQL Server\*\Backup\"</code></li>
+        <li>Archiving configuration files: <code>*.config</code>, <code>web.config</code>, <code>app.config</code>, <code>settings.json</code></li>
+        <li>Password manager databases archived: <code>*.kdbx</code>, <code>*.agilekeychain</code></li>
+        <li>Source code repositories archived: <code>.git</code>, <code>.svn</code>, <code>src\</code>, <code>source\</code></li>
+        <li>Archives containing SSL certificates: <code>.pfx</code>, <code>.pem</code>, <code>.key</code></li>
+        <li>Multiple sensitive file types in single archive (documents + databases + configs)</li>
+        <li>Archiving of email PST/OST files: <code>Outlook\*.pst</code></li>
+        <li>Financial files archived: <code>*invoice*</code>, <code>*payment*</code>, <code>*financial*</code>, <code>*budget*</code></li>
+        <li>HR or PII data archived: <code>*employee*</code>, <code>*personnel*</code>, <code>*SSN*</code>, <code>*salary*</code></li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-9">
+    <summary>9. Split or Multi-Volume Archive Creation</summary>
+    <div>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 11 (File created) - Multiple archive parts created</li>
+        <li>Monitor for sequential file creation: <code>.001</code>, <code>.002</code>, <code>.z01</code>, <code>.z02</code>, etc.</li>
+      </ul>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 4688 (Process creation) - Archive utilities with split parameters</li>
+        <li>Event ID 4663 (Access attempted to object) - Multiple archive part writes</li>
+      </ul>
+      <p><strong>Split Archive Patterns:</strong></p>
+      <ul>
+        <li>7-Zip: <code>archive.7z.001</code>, <code>archive.7z.002</code>, <code>archive.7z.003</code></li>
+        <li>WinRAR: <code>archive.part1.rar</code>, <code>archive.part2.rar</code></li>
+        <li>Zip: <code>archive.z01</code>, <code>archive.z02</code>, <code>archive.zip</code></li>
+        <li>Tar with split: <code>archive.tar.gz.aa</code>, <code>archive.tar.gz.ab</code></li>
+      </ul>
+      <p><strong>Command-Line Patterns:</strong></p>
+      <ul>
+        <li><code>7z.exe a -v100m archive.7z data\</code> (100MB volumes)</li>
+        <li><code>rar.exe a -v50m data.rar files\</code> (50MB volumes)</li>
+        <li><code>split -b 100M archive.tar.gz backup.tar.gz.</code> (Linux split)</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Multiple related archive files created simultaneously</li>
+        <li>Volume sizes designed to evade size-based detection</li>
+        <li>Sequential archive parts in staging directories</li>
+        <li>Split archives transferred separately</li>
+        <li>Archive parts with file-sharing service upload patterns</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Multiple files with <code>.001</code>, <code>.002</code>, <code>.003</code> extensions or <code>.part1.rar</code>, <code>.part2.rar</code> patterns</li>
+        <li>Archive volumes sized to evade DLP thresholds (e.g., just under 100MB if policy is 100MB)</li>
+        <li>Sequential archive part creation within minutes of each other</li>
+        <li>Split archives in staging directories: <code>C:\Users\Public\</code>, <code>%TEMP%\</code></li>
+        <li>Volume sizes matching cloud storage limits or email attachment limits</li>
+        <li>Archive parts transferred separately over time (evading rate-based detection)</li>
+        <li>Command lines with volume parameters: <code>-v</code>, <code>--volume</code>, split utilities</li>
+        <li>Archive parts with timestamp-based names: <code>data_20250115_part1.7z</code></li>
+        <li>Multiple archive parts uploaded to different file sharing services</li>
+        <li>Split archives deleted sequentially after individual transfers</li>
+      </ul>
+    </div>
+  </details>
+
+  <details class="section" id="sec-10">
+    <summary>10. Archive Creation Followed by Network Transfer Activity</summary>
+    <div>
+      <p><strong>SIEM Correlation:</strong></p>
+      <ul>
+        <li>Correlate archive creation (Sysmon Event ID 11) with network activity (Event ID 3)</li>
+        <li>Track time delta between archive creation and transfer</li>
+        <li>Monitor archive file access before network transfer</li>
+      </ul>
+      <p><strong>Sysmon:</strong></p>
+      <ul>
+        <li>Event ID 11 (File created) - Archive creation timestamp</li>
+        <li>Event ID 3 (Network connection) - Outbound connections following archive creation</li>
+        <li>Event ID 23 (File deleted) - Archive cleanup after transfer</li>
+      </ul>
+      <p><strong>Windows Event Logs (Security):</strong></p>
+      <ul>
+        <li>Event ID 5140 (Network share accessed) - SMB transfer of archives</li>
+        <li>Event ID 4663 (Access attempted to object) - Archive file read before transfer</li>
+      </ul>
+      <p><strong>Network Logs:</strong></p>
+      <ul>
+        <li>Firewall logs - HTTP/HTTPS POST, FTP, SCP connections</li>
+        <li>Proxy logs - Uploads to cloud storage, file sharing services</li>
+        <li>DNS logs - Domain resolution for exfiltration destinations</li>
+      </ul>
+      <p><strong>Correlation Timeframe:</strong></p>
+      <ul>
+        <li>Archive creation → Network transfer (within 5-60 minutes)</li>
+        <li>Archive creation → Upload to cloud storage (within 1-24 hours)</li>
+        <li>Archive creation → Deletion (within 1 hour of transfer)</li>
+      </ul>
+      <p><strong>Focus on:</strong></p>
+      <ul>
+        <li>Archives created then immediately transferred externally</li>
+        <li>Network connections to cloud storage after archive creation</li>
+        <li>HTTP POST or FTP PUT operations with archive files</li>
+        <li>Archives accessed by browsers or transfer utilities</li>
+        <li>Deletion of archives after successful transfer</li>
+      </ul>
+      <p><strong>Suspicious indicators:</strong></p>
+      <ul>
+        <li>Archive creation (Event ID 11) followed within 10 minutes by network connection (Event ID 3) to external IP</li>
+        <li>Archives in staging directory accessed by browsers: <code>chrome.exe</code>, <code>firefox.exe</code> reading archive files</li>
+        <li>HTTP POST requests with <code>Content-Type: application/zip</code> or multipart file uploads</li>
+        <li>FTP PUT commands or SCP transfers immediately after archive creation</li>
+        <li>Network connections to cloud storage domains: <code>dropbox.com</code>, <code>drive.google.com</code>, <code>onedrive.com</code></li>
+        <li>Archives created then accessed by <code>curl.exe</code>, <code>wget.exe</code>, or file transfer utilities</li>
+        <li>SMB connections (Event ID 5140) copying archives to external or removable shares</li>
+        <li>Large outbound data transfers matching archive file sizes</li>
+        <li>Archive deletion (Event ID 23) within 30-60 minutes of network transfer</li>
+        <li>Sequential pattern: create archive → transfer → delete archive → create next archive</li>
+      </ul>
+    </div>
+  </details>
+
+  <h2 id="sec-checklist">Archive Collected Data Investigation Checklist</h2>
+
+  <details class="section" open id="checklist-1">
+    <summary>1. Archive Utility Execution</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-001" type="checkbox"><label for="cb-001">Check 7z.exe, rar.exe with -p parameter (password protection) or -hp (encrypt headers)</label></li>
+      <li class="item"><input id="cb-002" type="checkbox"><label for="cb-002">Review archive utilities executed from %TEMP%, %APPDATA%, C:\Users\Public\</label></li>
+      <li class="item"><input id="cb-003" type="checkbox"><label for="cb-003">Monitor command lines archiving user directories: C:\Users*, %USERPROFILE%\Documents\</label></li>
+      <li class="item"><input id="cb-004" type="checkbox"><label for="cb-004">Identify tools executed by users that don't typically perform archiving</label></li>
+      <li class="item"><input id="cb-005" type="checkbox"><label for="cb-005">Look for archive utilities spawned from Office apps, browsers, script interpreters</label></li>
+      <li class="item"><input id="cb-006" type="checkbox"><label for="cb-006">Check renamed archive utilities (e.g., svchost.exe that's actually 7z.exe)</label></li>
+      <li class="item"><input id="cb-007" type="checkbox"><label for="cb-007">Review archiving to network shares or removable media</label></li>
+      <li class="item"><input id="cb-008" type="checkbox"><label for="cb-008">Monitor archive utilities executed during non-business hours (00:00-06:00)</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-2">
+    <summary>2. Archive File Creation in Unusual Locations</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-009" type="checkbox"><label for="cb-009">Review Sysmon Event ID 11 for archives in C:\Users\Public, C:\ProgramData, C:\Windows\Temp\</label></li>
+      <li class="item"><input id="cb-010" type="checkbox"><label for="cb-010">Check large archives (&gt;100MB) created in temporary directories</label></li>
+      <li class="item"><input id="cb-011" type="checkbox"><label for="cb-011">Monitor file names: data.zip, backup.rar, files.7z, documents.zip</label></li>
+      <li class="item"><input id="cb-012" type="checkbox"><label for="cb-012">Identify archives with timestamps: 2025-01-15.zip, backup_20250115.rar</label></li>
+      <li class="item"><input id="cb-013" type="checkbox"><label for="cb-013">Look for sequential numbering: part1.zip, part2.zip, part3.zip</label></li>
+      <li class="item"><input id="cb-014" type="checkbox"><label for="cb-014">Check archives in web server directories: C:\inetpub\wwwroot, /var/www/html/</label></li>
+      <li class="item"><input id="cb-015" type="checkbox"><label for="cb-015">Review archives in database backup directories by non-database processes</label></li>
+      <li class="item"><input id="cb-016" type="checkbox"><label for="cb-016">Monitor double extensions: invoice.pdf.zip, report.docx.rar</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-3">
+    <summary>3. Password-Protected/Encrypted Archives</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-017" type="checkbox"><label for="cb-017">Check command lines with -p, -hp, -password, or encryption flags</label></li>
+      <li class="item"><input id="cb-018" type="checkbox"><label for="cb-018">Review 7z.exe a -p -mhe=on (encrypts file names and content)</label></li>
+      <li class="item"><input id="cb-019" type="checkbox"><label for="cb-019">Monitor archive creation followed by encryption tool execution</label></li>
+      <li class="item"><input id="cb-020" type="checkbox"><label for="cb-020">Identify openssl, gpg, or encryption tools processing archives</label></li>
+      <li class="item"><input id="cb-021" type="checkbox"><label for="cb-021">Look for PowerShell combining Compress-Archive with encryption functions</label></li>
+      <li class="item"><input id="cb-022" type="checkbox"><label for="cb-022">Check archives with double extensions: data.zip.aes, files.7z.enc</label></li>
+      <li class="item"><input id="cb-023" type="checkbox"><label for="cb-023">Review password-protected archives in staging directories</label></li>
+      <li class="item"><input id="cb-024" type="checkbox"><label for="cb-024">Monitor archives encrypted with strong algorithms (AES-256)</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-4">
+    <summary>4. PowerShell Compression</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-025" type="checkbox"><label for="cb-025">Review Event ID 4104 for Compress-Archive targeting C:\Users, Documents, Desktop</label></li>
+      <li class="item"><input id="cb-026" type="checkbox"><label for="cb-026">Check PowerShell archiving entire user profiles or multiple user directories</label></li>
+      <li class="item"><input id="cb-027" type="checkbox"><label for="cb-027">Monitor [System.IO.Compression.ZipFile] .NET methods in scripts</label></li>
+      <li class="item"><input id="cb-028" type="checkbox"><label for="cb-028">Identify Base64-encoded PowerShell commands decoding to compression operations</label></li>
+      <li class="item"><input id="cb-029" type="checkbox"><label for="cb-029">Look for PowerShell compression with output to network shares or cloud paths</label></li>
+      <li class="item"><input id="cb-030" type="checkbox"><label for="cb-030">Check Compress-Archive with -Force parameter overwriting archives</label></li>
+      <li class="item"><input id="cb-031" type="checkbox"><label for="cb-031">Review PowerShell combining data collection, archiving, and network transfer</label></li>
+      <li class="item"><input id="cb-032" type="checkbox"><label for="cb-032">Monitor archives created by PowerShell spawned from Office macros</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-5">
+    <summary>5. Large Archives During Off-Hours</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-033" type="checkbox"><label for="cb-033">Review archives &gt;500MB created between 00:00-06:00 local time</label></li>
+      <li class="item"><input id="cb-034" type="checkbox"><label for="cb-034">Check multiple large archives (&gt;100MB each) within 1-hour window</label></li>
+      <li class="item"><input id="cb-035" type="checkbox"><label for="cb-035">Monitor archive creation during weekends by Monday-Friday employees</label></li>
+      <li class="item"><input id="cb-036" type="checkbox"><label for="cb-036">Identify large archives by service accounts or system processes</label></li>
+      <li class="item"><input id="cb-037" type="checkbox"><label for="cb-037">Look for archive creation during maintenance windows</label></li>
+      <li class="item"><input id="cb-038" type="checkbox"><label for="cb-038">Check large archives created after credential dumping or privilege escalation</label></li>
+      <li class="item"><input id="cb-039" type="checkbox"><label for="cb-039">Review sequential large archives suggesting systematic collection</label></li>
+      <li class="item"><input id="cb-040" type="checkbox"><label for="cb-040">Monitor large archives created then immediately transferred externally</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-6">
+    <summary>6. Staging Directory Archives</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-041" type="checkbox"><label for="cb-041">Timeline: Archives in C:\Users\Public\ or C:\ProgramData\ → Network connections within 5-30 minutes</label></li>
+      <li class="item"><input id="cb-042" type="checkbox"><label for="cb-042">Check Event ID 11 (staging) → Event ID 5140 (share access) to external systems</label></li>
+      <li class="item"><input id="cb-043" type="checkbox"><label for="cb-043">Monitor archives accessed by web browsers or FTP clients</label></li>
+      <li class="item"><input id="cb-044" type="checkbox"><label for="cb-044">Identify file deletion (Event ID 23) within 1 hour of creation</label></li>
+      <li class="item"><input id="cb-045" type="checkbox"><label for="cb-045">Look for multiple archives staged then transferred sequentially</label></li>
+      <li class="item"><input id="cb-046" type="checkbox"><label for="cb-046">Review systematic naming: part1.zip, part2.zip, backup1.rar</label></li>
+      <li class="item"><input id="cb-047" type="checkbox"><label for="cb-047">Check network connections to cloud storage from staging locations</label></li>
+      <li class="item"><input id="cb-048" type="checkbox"><label for="cb-048">Monitor archives in hidden folders: C:\Users\Public\.hidden, C:\$Recycle.Bin\</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-7">
+    <summary>7. Suspicious Command-Line Parameters</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-049" type="checkbox"><label for="cb-049">Check recursive archiving: 7z.exe a -r archive.zip C:\Users\</label></li>
+      <li class="item"><input id="cb-050" type="checkbox"><label for="cb-050">Review maximum compression: -mx=9, -m5 (minimize file size)</label></li>
+      <li class="item"><input id="cb-051" type="checkbox"><label for="cb-051">Monitor split volume creation: -v100m, -v50m (easier transfer/evasion)</label></li>
+      <li class="item"><input id="cb-052" type="checkbox"><label for="cb-052">Identify silent/automated mode: -y, -q (suppress prompts, hide activity)</label></li>
+      <li class="item"><input id="cb-053" type="checkbox"><label for="cb-053">Look for exclusion patterns: -x!*.log, -x!antivirus</label></li>
+      <li class="item"><input id="cb-054" type="checkbox"><label for="cb-054">Check output piped to network: 7z.exe a -so | curl -T -</label></li>
+      <li class="item"><input id="cb-055" type="checkbox"><label for="cb-055">Review compression with immediate source deletion: &amp;&amp; del /q files*</label></li>
+      <li class="item"><input id="cb-056" type="checkbox"><label for="cb-056">Monitor archive commands in batch scripts or scheduled tasks</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-8">
+    <summary>8. Archives with Sensitive Content</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-057" type="checkbox"><label for="cb-057">Review archives from C:\Users*\Documents, C:\Users*\Desktop\</label></li>
+      <li class="item"><input id="cb-058" type="checkbox"><label for="cb-058">Check command lines targeting database directories</label></li>
+      <li class="item"><input id="cb-059" type="checkbox"><label for="cb-059">Monitor archiving configuration files: *.config, web.config, settings.json</label></li>
+      <li class="item"><input id="cb-060" type="checkbox"><label for="cb-060">Identify password manager databases: *.kdbx, *.agilekeychain</label></li>
+      <li class="item"><input id="cb-061" type="checkbox"><label for="cb-061">Look for source code repositories: .git, .svn, src, source\</label></li>
+      <li class="item"><input id="cb-062" type="checkbox"><label for="cb-062">Check archives containing SSL certificates: .pfx, .pem, .key</label></li>
+      <li class="item"><input id="cb-063" type="checkbox"><label for="cb-063">Review email PST/OST files: Outlook*.pst</label></li>
+      <li class="item"><input id="cb-064" type="checkbox"><label for="cb-064">Monitor financial files: *invoice*, *payment*, *financial*, *budget*</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-9">
+    <summary>9. Split/Multi-Volume Archives</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-065" type="checkbox"><label for="cb-065">Check multiple files with .001, .002, .003 or .part1.rar, .part2.rar patterns</label></li>
+      <li class="item"><input id="cb-066" type="checkbox"><label for="cb-066">Review archive volumes sized to evade DLP thresholds (just under 100MB)</label></li>
+      <li class="item"><input id="cb-067" type="checkbox"><label for="cb-067">Monitor sequential archive part creation within minutes</label></li>
+      <li class="item"><input id="cb-068" type="checkbox"><label for="cb-068">Identify split archives in staging: C:\Users\Public, %TEMP%\</label></li>
+      <li class="item"><input id="cb-069" type="checkbox"><label for="cb-069">Look for volume sizes matching cloud storage or email limits</label></li>
+      <li class="item"><input id="cb-070" type="checkbox"><label for="cb-070">Check archive parts transferred separately over time</label></li>
+      <li class="item"><input id="cb-071" type="checkbox"><label for="cb-071">Review command lines with -v, --volume, split utilities</label></li>
+      <li class="item"><input id="cb-072" type="checkbox"><label for="cb-072">Monitor split archives deleted sequentially after transfers</label></li>
+    </ul>
+  </details>
+
+  <details class="section" id="checklist-10">
+    <summary>10. Archive Creation to Network Transfer</summary>
+    <ul class="checklist">
+      <li class="item"><input id="cb-073" type="checkbox"><label for="cb-073">Timeline: Archive creation (Event ID 11) → Network connection (Event ID 3) within 10 minutes to external IP</label></li>
+      <li class="item"><input id="cb-074" type="checkbox"><label for="cb-074">Check archives accessed by browsers: chrome.exe, firefox.exe</label></li>
+      <li class="item"><input id="cb-075" type="checkbox"><label for="cb-075">Monitor HTTP POST with Content-Type: application/zip or multipart uploads</label></li>
+      <li class="item"><input id="cb-076" type="checkbox"><label for="cb-076">Identify FTP PUT or SCP transfers after archive creation</label></li>
+      <li class="item"><input id="cb-077" type="checkbox"><label for="cb-077">Look for connections to dropbox.com, drive.google.com, onedrive.com</label></li>
+      <li class="item"><input id="cb-078" type="checkbox"><label for="cb-078">Review archives accessed by curl.exe, wget.exe, transfer utilities</label></li>
+      <li class="item"><input id="cb-079" type="checkbox"><label for="cb-079">Check SMB connections (Event ID 5140) copying to external shares</label></li>
+      <li class="item"><input id="cb-080" type="checkbox"><label for="cb-080">Monitor archive deletion (Event ID 23) within 30-60 minutes of transfer</label></li>
+      <li class="item"><input id="cb-081" type="checkbox"><label for="cb-081">Timeline: Create archive → Transfer → Delete → Create next archive</label></li>
+    </ul>
+  </details>
+
+</main>
+
+<script>
+/* --- Simple UX helpers --- */
+
+// Persist checkboxes
+const STORAGE_KEY = 't1560_checks_v1';
+function loadChecks(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    for (const [id, val] of Object.entries(saved)){
+      const el = document.getElementById(id);
+      if (el && el.type === 'checkbox') el.checked = !!val;
+    }
+  }catch(e){ /* ignore parse errors */ }
+}
+function saveChecks(){
+  const data = {};
+  document.querySelectorAll('input[type="checkbox"][id]').forEach(cb => data[cb.id] = cb.checked);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+document.addEventListener('change', e => {
+  if (e.target.matches('input[type="checkbox"]')) saveChecks();
+});
+loadChecks();
+
+// Filter only checklist items
+const filter = document.getElementById('filter');
+filter?.addEventListener('input', () => {
+  const q = filter.value.trim().toLowerCase();
+  document.querySelectorAll('.checklist .item').forEach(li => {
+    const txt = li.textContent.toLowerCase();
+    li.style.display = txt.includes(q) ? '' : 'none';
+  });
+  // Auto-expand sections if something inside matches
+  document.querySelectorAll('details.section').forEach(d => {
+    const hasVisible = d.querySelector('.checklist .item:not([style*="display: none"])');
+    if (q && hasVisible) d.open = true;
+  });
+});
+
+// Expand/collapse
+const expandBtn = document.getElementById('expand');
+const collapseBtn = document.getElementById('collapse');
+expandBtn?.addEventListener('click', () => document.querySelectorAll('details.section').forEach(d => d.open = true));
+collapseBtn?.addEventListener('click', () => document.querySelectorAll('details.section').forEach(d => d.open = false));
+
+// Clear checks
+document.getElementById('clear')?.addEventListener('click', () => {
+  document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  saveChecks();
+});
+
+</script>
+</body>
+</html>

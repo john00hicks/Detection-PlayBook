@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Exfiltration Over Web Service (T1567)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+	<h1>Exfiltration Over Web Service: <a href="https://attack.mitre.org/techniques/T1567/">T1567</a></h1>
+<h2>Detection Explanation</h2>
+<p>Exfiltration Over Web Service involves adversaries using legitimate external web services to steal data from compromised networks. This technique enables attackers to blend malicious data exfiltration with normal user behavior by leveraging trusted cloud services, file sharing platforms, code repositories, and social media that are often allowed through corporate firewalls and security controls. Web services provide convenient, high-bandwidth channels for data theft while appearing as legitimate business activity.</p>
+<p>Attackers use web services for exfiltration because these platforms are widely trusted, rarely blocked by security controls, use encrypted HTTPS connections that prevent content inspection, and provide reliable infrastructure for storing and retrieving stolen data. Common targets include cloud storage services like Dropbox and Google Drive (T1567.002), code repositories like GitHub and Pastebin (T1567.001), social media platforms, file sharing services, and collaboration tools. Adversaries may use legitimate accounts, create new accounts, or abuse public sharing features.</p>
+<p>Successful exfiltration over web services enables attackers to steal large volumes of data while bypassing traditional DLP controls, using encrypted channels that prevent content inspection, and leveraging infrastructure maintained by trusted third parties. This technique is particularly effective because security teams must balance detecting malicious exfiltration against allowing legitimate business use of these same services. The impact includes theft of intellectual property, customer data, source code, credentials, financial records, and other sensitive information through channels that appear as normal business activity.</p>
+<p>Detection requires monitoring web service usage patterns, tracking uploads to cloud storage platforms, identifying unusual volumes of data transfer to external services, and correlating web service activity with data staging and collection behaviors. Organizations should establish baselines for legitimate web service usage and alert on anomalies such as uploads from servers, large file transfers during off-hours, use of personal accounts from corporate systems, uploads immediately following data collection, or access to web services from unexpected processes.</p>
+<hr>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Summary of Indicators</h3>
+<ol>
+<li>Uploads to cloud storage services (Dropbox, Google Drive, OneDrive) (T1567.002)</li>
+<li>Code repository uploads (GitHub, GitLab, Pastebin) (T1567.001)</li>
+<li>File sharing service usage (WeTransfer, Mega, FileZilla)</li>
+<li>Social media platform data exfiltration</li>
+<li>Web-based email attachments to external accounts</li>
+<li>Collaboration tool abuse (Slack, Teams, Discord webhooks)</li>
+<li>Large file uploads from servers or unexpected systems</li>
+<li>Web service access from non-browser processes</li>
+<li>Personal account usage from corporate systems</li>
+<li>Web service uploads during off-hours or by service accounts</li>
+</ol>
+<hr>
+<h3>1. Uploads to Cloud Storage Services (Dropbox, Google Drive, OneDrive)</h3>
+<p><strong>Proxy Logs:</strong></p>
+<ul>
+<li>HTTP/HTTPS POST requests to cloud storage domains</li>
+<li>Upload operations to cloud storage APIs</li>
+<li>File upload sizes and frequencies</li>
+<li>User-agent strings and API endpoints</li>
+</ul>
+<p><strong>DNS Logs:</strong></p>
+<ul>
+<li>Queries to cloud storage domains</li>
+<li>Subdomain patterns indicating API usage</li>
+<li>Query frequency from specific hosts</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Connections to cloud storage IPs</li>
+<li>Event ID 22 (DNS query) - Cloud storage domain queries</li>
+<li>Event ID 1 (Process creation) - Cloud sync client execution</li>
+</ul>
+<p><strong>Cloud Storage Domains:</strong></p>
+<ul>
+<li>Dropbox: <code>*.dropbox.com</code>, <code>*.dropboxapi.com</code></li>
+<li>Google Drive: <code>drive.google.com</code>, <code>docs.google.com</code>, <code>*.googleapis.com</code></li>
+<li>OneDrive: <code>*.onedrive.com</code>, <code>*.sharepoint.com</code></li>
+<li>Box: <code>*.box.com</code>, <code>api.box.com</code></li>
+<li>iCloud: <code>*.icloud.com</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Large file uploads to cloud storage from corporate systems</li>
+<li>Cloud storage access from servers or non-user systems</li>
+<li>Uploads immediately following data staging or collection</li>
+<li>Personal cloud accounts accessed from corporate infrastructure</li>
+<li>Uploads during off-hours or by service accounts</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>HTTP POST requests &gt;50MB to <code>content.dropboxapi.com</code> or <code>www.googleapis.com/upload/drive</code></li>
+<li>Cloud storage uploads from servers, databases, or domain controllers</li>
+<li>Multiple sequential uploads to cloud storage within short timeframe</li>
+<li>Uploads from processes other than browsers: <code>powershell.exe</code>, <code>python.exe</code>, custom scripts</li>
+<li>Personal Dropbox/Google Drive accounts accessed from corporate systems</li>
+<li>Cloud sync clients (<code>Dropbox.exe</code>, <code>OneDrive.exe</code>) executed from <code>%TEMP%</code> or portable installations</li>
+<li>API-based uploads using access tokens or OAuth credentials</li>
+<li>Uploads occurring between 00:00-06:00 local time from inactive user accounts</li>
+<li>File upload patterns matching staged archive names: <code>data.zip</code>, <code>backup.rar</code></li>
+<li>Cloud storage connections from service accounts or system processes</li>
+</ul>
+<hr>
+<h3>2. Code Repository Uploads (GitHub, GitLab, Pastebin)</h3>
+<p><strong>Proxy Logs:</strong></p>
+<ul>
+<li>HTTP POST requests to code repository domains</li>
+<li>Git push operations and API calls</li>
+<li>Pastebin or text sharing service uploads</li>
+<li>Content-Type headers indicating file uploads</li>
+</ul>
+<p><strong>DNS Logs:</strong></p>
+<ul>
+<li>Queries to code repository domains</li>
+<li>Gist and Pastebin service domains</li>
+<li>API endpoint subdomains</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Connections to repository services</li>
+<li>Event ID 1 (Process creation) - Git client execution</li>
+<li>Event ID 22 (DNS query) - Repository domain queries</li>
+</ul>
+<p><strong>Code Repository Domains:</strong></p>
+<ul>
+<li>GitHub: <code>github.com</code>, <code>api.github.com</code>, <code>gist.github.com</code></li>
+<li>GitLab: <code>gitlab.com</code>, <code>*.gitlab.io</code></li>
+<li>Bitbucket: <code>bitbucket.org</code>, <code>api.bitbucket.org</code></li>
+<li>Pastebin: <code>pastebin.com</code>, <code>pastebin.pl</code></li>
+<li>Paste sites: <code>paste.ee</code>, <code>privatebin.net</code>, <code>ghostbin.com</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Repository creation or uploads from non-developer systems</li>
+<li>Pastebin usage for non-code content</li>
+<li>Large binary file uploads to repositories</li>
+<li>Private repository creation with sensitive data</li>
+<li>Git push operations from unexpected users or systems</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Git push operations from servers, workstations, or non-development systems</li>
+<li>Repository creation with names like <code>backup</code>, <code>data</code>, <code>files</code>, <code>temp</code></li>
+<li>Pastebin uploads containing base64-encoded data or non-code content</li>
+<li>HTTP POST to <code>api.github.com/repos</code> creating private repositories</li>
+<li>Large files (&gt;10MB) uploaded to GitHub/GitLab from corporate systems</li>
+<li>Gist creation with <code>.zip</code>, <code>.rar</code>, <code>.7z</code> file attachments</li>
+<li>Git commands executed by non-developer accounts: <code>git init</code>, <code>git remote add</code>, <code>git push</code></li>
+<li>Pastebin uploads from <code>powershell.exe</code>, <code>cmd.exe</code>, or scripts</li>
+<li>Repository uploads immediately following data collection or archiving</li>
+<li>Personal GitHub accounts accessed from corporate infrastructure for uploads</li>
+</ul>
+<hr>
+<h3>3. File Sharing Service Usage (WeTransfer, Mega, Send Anywhere)</h3>
+<p><strong>Proxy Logs:</strong></p>
+<ul>
+<li>HTTP POST requests to file sharing domains</li>
+<li>Upload operation patterns and file sizes</li>
+<li>Download link generation</li>
+<li>Multi-part upload patterns</li>
+</ul>
+<p><strong>DNS Logs:</strong></p>
+<ul>
+<li>Queries to file sharing service domains</li>
+<li>API and upload subdomain patterns</li>
+</ul>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Large outbound transfers to file sharing services</li>
+<li>Sustained connections for large file uploads</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - File sharing service connections</li>
+<li>Event ID 22 (DNS query) - File sharing domain queries</li>
+</ul>
+<p><strong>File Sharing Domains:</strong></p>
+<ul>
+<li>WeTransfer: <code>wetransfer.com</code>, <code>*.wetransfer.com</code></li>
+<li>Mega: <code>mega.nz</code>, <code>mega.io</code></li>
+<li>Send Anywhere: <code>send-anywhere.com</code></li>
+<li>MediaFire: <code>mediafire.com</code>, <code>*.mediafire.com</code></li>
+<li>Filemail: <code>filemail.com</code></li>
+<li>Firefox Send alternatives: <code>send.vis.ee</code>, <code>send.tresorit.com</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>File sharing service usage from corporate systems</li>
+<li>Large file uploads to temporary sharing services</li>
+<li>Uploads from non-user systems or servers</li>
+<li>File sharing during off-hours</li>
+<li>Multiple uploads to same or different sharing services</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Uploads &gt;100MB to WeTransfer or Mega from corporate workstations</li>
+<li>File sharing service usage from servers, databases, or infrastructure systems</li>
+<li>Multiple sequential uploads to file sharing platforms within 1-hour window</li>
+<li>Uploads during off-hours (00:00-06:00) or weekends</li>
+<li>File names suggesting sensitive data: <code>database_backup.zip</code>, <code>customer_data.rar</code></li>
+<li>File sharing from service accounts or system processes</li>
+<li>Upload links generated then accessed from external networks immediately</li>
+<li>Browser uploads of recently created archives from staging directories</li>
+<li>Multiple file sharing services used in sequence (evading per-service monitoring)</li>
+<li>Uploads from processes other than browsers: PowerShell with <code>Invoke-WebRequest</code></li>
+</ul>
+<hr>
+<h3>4. Social Media Platform Data Exfiltration</h3>
+<p><strong>Proxy Logs:</strong></p>
+<ul>
+<li>HTTP POST requests to social media domains</li>
+<li>File upload operations (images, videos, documents)</li>
+<li>Direct message API calls</li>
+<li>Media upload endpoints</li>
+</ul>
+<p><strong>DNS Logs:</strong></p>
+<ul>
+<li>Social media domain queries</li>
+<li>API and media upload subdomains</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Social media connections</li>
+<li>Event ID 22 (DNS query) - Social media domain queries</li>
+<li>Event ID 1 (Process creation) - Social media API scripts</li>
+</ul>
+<p><strong>Social Media Platforms:</strong></p>
+<ul>
+<li>Twitter: <code>twitter.com</code>, <code>api.twitter.com</code>, <code>upload.twitter.com</code></li>
+<li>Facebook: <code>facebook.com</code>, <code>graph.facebook.com</code></li>
+<li>Instagram: <code>instagram.com</code>, <code>*.cdninstagram.com</code></li>
+<li>LinkedIn: <code>linkedin.com</code>, <code>api.linkedin.com</code></li>
+<li>Reddit: <code>reddit.com</code>, <code>api.reddit.com</code></li>
+<li>Imgur: <code>imgur.com</code>, <code>api.imgur.com</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Social media uploads from corporate systems during work hours</li>
+<li>Media uploads (images, videos) from non-user systems</li>
+<li>API-based posting or messaging from scripts</li>
+<li>Direct message usage for data transfer</li>
+<li>Image uploads with potential steganography</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Twitter API uploads from <code>powershell.exe</code> or Python scripts</li>
+<li>Large image/video uploads to social media from servers or workstations</li>
+<li>Direct message API calls sending files or links to download sites</li>
+<li>Imgur or image hosting uploads from non-browser processes</li>
+<li>Social media posts containing download links or encoded data</li>
+<li>Twitter DMs or Facebook messages with file attachments from corporate systems</li>
+<li>API authentication tokens used for automated posting</li>
+<li>Multiple image uploads to Instagram/Imgur within short timeframe</li>
+<li>Social media activity from service accounts or during off-hours</li>
+<li>Posts containing pastebin links, GitHub gists, or file sharing URLs</li>
+</ul>
+<hr>
+<h3>5. Web-Based Email Attachments to External Accounts</h3>
+<p><strong>Proxy Logs:</strong></p>
+<ul>
+<li>HTTP POST requests to webmail services</li>
+<li>Email composition and send operations</li>
+<li>Attachment upload patterns</li>
+<li>SMTP submission via web interfaces</li>
+</ul>
+<p><strong>DNS Logs:</strong></p>
+<ul>
+<li>Webmail service domain queries</li>
+<li>Email provider API domains</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Webmail service connections</li>
+<li>Event ID 22 (DNS query) - Webmail domain queries</li>
+</ul>
+<p><strong>Webmail Services:</strong></p>
+<ul>
+<li>Gmail: <code>mail.google.com</code>, <code>gmail.com</code></li>
+<li><a href="http://Outlook.com">Outlook.com</a>: <code>outlook.live.com</code>, <code>outlook.office365.com</code></li>
+<li>Yahoo Mail: <code>mail.yahoo.com</code></li>
+<li>ProtonMail: <code>protonmail.com</code></li>
+<li>Tutanota: <code>tutanota.com</code></li>
+<li>Temporary email: <code>guerrillamail.com</code>, <code>temp-mail.org</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Webmail access from corporate systems</li>
+<li>Large attachments sent to external personal accounts</li>
+<li>Emails to personal accounts from corporate infrastructure</li>
+<li>Webmail usage from servers or non-user systems</li>
+<li>Multiple emails with attachments sent in sequence</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Gmail/Outlook.com accessed from corporate systems sending emails with &gt;10MB attachments</li>
+<li>Multiple emails with attachments sent to same external personal account</li>
+<li>Webmail usage from servers, databases, or infrastructure systems</li>
+<li>Attachments matching staged file names: <code>backup.zip</code>, <code>data.rar</code>, <code>export.7z</code></li>
+<li>Emails sent during off-hours (00:00-06:00) from corporate systems</li>
+<li>Temporary or anonymous email services accessed from corporate infrastructure</li>
+<li>ProtonMail or encrypted email services used for data transfer</li>
+<li>Sequential emails with attachments within 30-minute window</li>
+<li>Webmail accessed by processes other than browsers</li>
+<li>Email attachments sent immediately after archive creation or file staging</li>
+</ul>
+<hr>
+<h3>6. Collaboration Tool Abuse (Slack, Teams, Discord Webhooks)</h3>
+<p><strong>Proxy Logs:</strong></p>
+<ul>
+<li>HTTP POST requests to collaboration platform APIs</li>
+<li>Webhook invocations with data payloads</li>
+<li>File upload operations to chat platforms</li>
+<li>API authentication and usage patterns</li>
+</ul>
+<p><strong>DNS Logs:</strong></p>
+<ul>
+<li>Collaboration platform domain queries</li>
+<li>Webhook and API subdomain patterns</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Collaboration tool connections</li>
+<li>Event ID 22 (DNS query) - Platform domain queries</li>
+<li>Event ID 1 (Process creation) - Scripts invoking webhooks</li>
+</ul>
+<p><strong>Collaboration Platforms:</strong></p>
+<ul>
+<li>Slack: <code>slack.com</code>, <code>hooks.slack.com</code>, <code>files.slack.com</code></li>
+<li>Microsoft Teams: <code>teams.microsoft.com</code>, <code>*.sharepoint.com</code></li>
+<li>Discord: <code>discord.com</code>, <code>discordapp.com</code>, <code>*.discord.com</code></li>
+<li>Mattermost: <code>mattermost.com</code></li>
+<li>Rocket.Chat: <code>rocket.chat</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Webhook usage from servers or automated scripts</li>
+<li>File uploads to collaboration platforms from corporate systems</li>
+<li>API-based messaging with data payloads</li>
+<li>Collaboration tool usage from non-user systems</li>
+<li>Webhooks invoked from unexpected processes</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Discord webhook POST requests: <code>https://discord.com/api/webhooks/*/</code> from PowerShell or scripts</li>
+<li>Slack incoming webhook calls with large message payloads or file attachments</li>
+<li>Teams file uploads from servers, databases, or non-user systems</li>
+<li>Webhook invocations containing base64-encoded data or file contents</li>
+<li>Multiple webhook calls within short timeframe from same system</li>
+<li>Collaboration platform API usage from <code>powershell.exe</code>, <code>python.exe</code>, <code>curl.exe</code></li>
+<li>File uploads to Slack/Discord from staging directories: <code>%TEMP%</code>, <code>C:\Users\Public\</code></li>
+<li>Personal Slack workspaces or Discord servers accessed from corporate systems</li>
+<li>Webhook URLs in scripts or scheduled tasks for automated exfiltration</li>
+<li>Collaboration platform usage during off-hours from service accounts</li>
+</ul>
+<hr>
+<h3>7. Large File Uploads from Servers or Unexpected Systems</h3>
+<p><strong>Network Logs:</strong></p>
+<ul>
+<li>Netflow/IPFIX - Large outbound transfers from servers</li>
+<li>Firewall logs - High-volume uploads to external web services</li>
+<li>Bandwidth monitoring - Upload spikes from infrastructure systems</li>
+</ul>
+<p><strong>Proxy Logs:</strong></p>
+<ul>
+<li>Large HTTP POST requests from server IPs</li>
+<li>Upload operations from non-user systems</li>
+<li>File transfer sizes and destinations</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Server network connections</li>
+<li>Event ID 11 (File created) - Files staged on servers before upload</li>
+</ul>
+<p><strong>SIEM Correlation:</strong></p>
+<ul>
+<li>Baseline normal upload behavior per system type</li>
+<li>Alert on servers uploading data to external web services</li>
+<li>Track upload volumes exceeding thresholds</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Database servers uploading to web services</li>
+<li>File servers transferring data externally</li>
+<li>Domain controllers with external uploads</li>
+<li>Application servers accessing cloud storage</li>
+<li>Infrastructure systems using personal web services</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>SQL Server, Oracle, or MySQL database servers uploading &gt;100MB to external web services</li>
+<li>File servers or NAS devices establishing connections to Dropbox, Google Drive, or file sharing sites</li>
+<li>Domain controllers accessing cloud storage or file sharing platforms</li>
+<li>Web servers (IIS, Apache, Nginx) uploading files to external services</li>
+<li>Exchange servers or mail systems uploading to personal cloud storage</li>
+<li>Backup servers transferring data to non-approved cloud storage</li>
+<li>VMware or Hyper-V hosts accessing external file sharing services</li>
+<li>SCADA or IoT systems establishing connections to public web services</li>
+<li>Upload volumes from servers exceeding 1GB within 24-hour period</li>
+<li>Infrastructure systems accessing web services during maintenance windows</li>
+</ul>
+<hr>
+<h3>8. Web Service Access from Non-Browser Processes</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Web service connections from unexpected processes</li>
+<li>Event ID 1 (Process creation) - Scripts or tools accessing web services</li>
+<li>Event ID 22 (DNS query) - Web service domains queried by non-browsers</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Command-line tools with web service URLs</li>
+<li>Event ID 5156 (Windows Filtering Platform) - Connections from unexpected processes</li>
+</ul>
+<p><strong>Processes to Monitor:</strong></p>
+<ul>
+<li><code>powershell.exe</code>, <code>cmd.exe</code></li>
+<li><code>python.exe</code>, <code>ruby.exe</code>, <code>perl.exe</code></li>
+<li><code>curl.exe</code>, <code>wget.exe</code></li>
+<li><code>certutil.exe</code>, <code>bitsadmin.exe</code></li>
+<li>Custom executables from <code>%TEMP%</code> or <code>%APPDATA%</code></li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>PowerShell scripts uploading to web services</li>
+<li>Command-line tools accessing cloud storage APIs</li>
+<li>Custom executables connecting to file sharing services</li>
+<li>Scripting languages accessing web service endpoints</li>
+<li>Non-browser processes with web service API authentication</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li><code>powershell.exe</code> with <code>Invoke-WebRequest</code> or <code>Invoke-RestMethod</code> uploading to Dropbox API</li>
+<li>Python scripts accessing Google Drive API: <code>from googleapiclient.discovery import build</code></li>
+<li><code>curl.exe</code> uploading files to WeTransfer or file sharing services</li>
+<li><code>certutil.exe</code> with URL parameters accessing web services (abuse of legitimate tool)</li>
+<li>Custom executables from <code>%TEMP%</code> establishing HTTPS connections to cloud storage</li>
+<li>PowerShell commands with OAuth tokens or API keys for web service authentication</li>
+<li>Scheduled tasks executing scripts that upload to external web services</li>
+<li>Service processes accessing personal cloud storage APIs</li>
+<li>Git client (<code>git.exe</code>) from non-developer systems pushing to external repositories</li>
+<li>Background processes establishing connections to Slack webhooks or Discord APIs</li>
+</ul>
+<hr>
+<h3>9. Personal Account Usage from Corporate Systems</h3>
+<p><strong>Proxy Logs:</strong></p>
+<ul>
+<li>Authentication to personal accounts from corporate IPs</li>
+<li>User-agent strings indicating personal account sessions</li>
+<li>Cookie analysis showing multiple account usage</li>
+<li>Session tokens for personal vs. corporate accounts</li>
+</ul>
+<p><strong>DNS Logs:</strong></p>
+<ul>
+<li>Personal email domain queries from corporate systems</li>
+<li>Personal cloud storage account access</li>
+</ul>
+<p><strong>SIEM Correlation:</strong></p>
+<ul>
+<li>Track account identifiers in web traffic</li>
+<li>Correlate personal account usage with data transfers</li>
+<li>Monitor for account switching patterns</li>
+</ul>
+<p><strong>Authentication Indicators:</strong></p>
+<ul>
+<li>Login to personal Gmail/Outlook.com accounts</li>
+<li>Personal Dropbox/Drive account authentication</li>
+<li>Personal GitHub account access</li>
+<li>Social media personal accounts from work systems</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Personal accounts accessed during work hours</li>
+<li>Account switching from corporate to personal</li>
+<li>File transfers to personal accounts</li>
+<li>Personal account usage from servers or infrastructure</li>
+<li>Data upload timing correlating with personal account authentication</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Personal Gmail account authentication from corporate workstation followed by large email with attachment</li>
+<li>Dropbox personal account login from corporate system with subsequent 500MB upload</li>
+<li>Corporate Google Drive session switching to personal Drive session with file transfers</li>
+<li>GitHub personal account accessed from corporate developer workstation with private repo creation</li>
+<li>Personal OneDrive authenticated from file server or database server</li>
+<li>Multiple account switches within same session: corporate → personal → upload → logout</li>
+<li>Personal cloud storage accounts accessed by employees with access to sensitive data</li>
+<li>Personal account usage during data collection or staging activities</li>
+<li>Service accounts or shared credentials accessing personal external services</li>
+<li>Personal account authentication from systems that should only use corporate accounts</li>
+</ul>
+<hr>
+<h3>10. Web Service Uploads During Off-Hours or by Service Accounts</h3>
+<p><strong>SIEM Correlation:</strong></p>
+<ul>
+<li>Correlate upload activity with user work schedules</li>
+<li>Track service account web service usage</li>
+<li>Monitor time-based patterns for automated exfiltration</li>
+</ul>
+<p><strong>Proxy Logs:</strong></p>
+<ul>
+<li>Web service uploads outside business hours</li>
+<li>Upload timestamps vs. user typical work patterns</li>
+<li>Service account authentication to web services</li>
+</ul>
+<p><strong>Windows Event Logs (Security):</strong></p>
+<ul>
+<li>Event ID 4624 (Logon) - Service account interactive logons</li>
+<li>Event ID 4688 (Process creation) - Service account process execution</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - Off-hours web service connections</li>
+<li>Event ID 1 (Process creation) - Processes running under service accounts</li>
+</ul>
+<p><strong>Focus on:</strong></p>
+<ul>
+<li>Uploads during nights, weekends, holidays</li>
+<li>Service accounts accessing web services</li>
+<li>Automated scheduled uploads</li>
+<li>Upload timing designed to evade detection</li>
+<li>Web service access when users should be inactive</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Cloud storage uploads occurring between 02:00-05:00 local time from user accounts</li>
+<li>Weekend uploads from employees who typically work Monday-Friday</li>
+<li>Service accounts (<code>svc_*</code>, <code>SYSTEM</code>, <code>NetworkService</code>) accessing Dropbox or Google Drive</li>
+<li>Scheduled task executing at 03:00 daily uploading files to file sharing services</li>
+<li>Holiday period uploads when organization is closed</li>
+<li>Web service uploads from VDI sessions during times when user is logged out</li>
+<li>Service account authentication to personal cloud storage or file sharing platforms</li>
+<li>Multiple systems showing coordinated off-hours uploads to same web service</li>
+<li>Upload patterns matching backup schedules but to unauthorized cloud storage</li>
+<li>Web service API calls from service accounts executing PowerShell scripts during off-hours</li>
+</ul>
+<hr>
+<h1>Exfiltration Over Web Service Investigation Checklist</h1>
+<h2>1. Cloud Storage Service Uploads</h2>
+<ul>
+    <li><label><input type="checkbox"> Review proxy logs for HTTP POST &gt;50MB to  <a href="http://content.dropboxapi.com">content.dropboxapi.com</a>, <a href="http://googleapis.com/upload/drive">googleapis.com/upload/drive</a></label></li>
+    <li><label><input type="checkbox"> Check cloud storage uploads from servers, databases, or domain controllers</label></li>
+    <li><label><input type="checkbox"> Monitor DNS queries to *.dropbox.com, <a href="http://drive.google.com">drive.google.com</a>, *.onedrive.com from unexpected systems</label></li>
+    <li><label><input type="checkbox"> Identify uploads from powershell.exe, python.exe, custom scripts vs. browsers</label></li>
+    <li><label><input type="checkbox"> Look for personal Dropbox/Google Drive accounts accessed from corporate systems</label></li>
+    <li><label><input type="checkbox"> Check cloud sync clients executed from %TEMP% or portable installations</label></li>
+    <li><label><input type="checkbox"> Review uploads between 00:00-06:00 from inactive user accounts</label></li>
+    <li><label><input type="checkbox"> Monitor file patterns: data.zip, backup.rar in upload names</label></li>
+</ul>
+
+<h2>2. Code Repository Uploads</h2>
+<ul>
+    <li><label><input type="checkbox"> Check Git push operations from servers, workstations, non-development systems</label></li>
+    <li><label><input type="checkbox"> Review repository creation with names: backup, data, files, temp</label></li>
+    <li><label><input type="checkbox"> Monitor Pastebin uploads containing base64-encoded data or non-code content</label></li>
+    <li><label><input type="checkbox"> Identify HTTP POST to <a href="http://api.github.com/repos">api.github.com/repos</a> creating private repositories</label></li>
+    <li><label><input type="checkbox"> Look for large files (&gt;10MB) uploaded to GitHub/GitLab from corporate systems</label></li>
+    <li><label><input type="checkbox"> Check Gist creation with .zip, .rar, .7z attachments</label></li>
+    <li><label><input type="checkbox"> Review Git commands by non-developer accounts: git init, git remote add, git push</label></li>
+    <li><label><input type="checkbox"> Monitor personal GitHub accounts accessed for uploads from corporate infrastructure</label></li>
+</ul>
+
+<h2>3. File Sharing Service Usage</h2>
+<ul>
+    <li><label><input type="checkbox"> Review uploads &gt;100MB to WeTransfer, Mega, Send Anywhere from workstations</label></li>
+    <li><label><input type="checkbox"> Check file sharing from servers, databases, infrastructure systems</label></li>
+    <li><label><input type="checkbox"> Monitor multiple sequential uploads to sharing platforms within 1-hour window</label></li>
+    <li><label><input type="checkbox"> Identify uploads during off-hours (00:00-06:00) or weekends</label></li>
+    <li><label><input type="checkbox"> Look for file names: database_backup.zip, customer_data.rar</label></li>
+    <li><label><input type="checkbox"> Check file sharing from service accounts or system processes</label></li>
+    <li><label><input type="checkbox"> Review upload links generated then accessed from external networks immediately</label></li>
+    <li><label><input type="checkbox"> Monitor PowerShell Invoke-WebRequest uploads to file sharing services</label></li>
+</ul>
+
+<h2>4. Social Media Data Exfiltration</h2>
+<ul>
+    <li><label><input type="checkbox"> Check Twitter API uploads from powershell.exe or Python scripts</label></li>
+    <li><label><input type="checkbox"> Review large image/video uploads to social media from servers/workstations</label></li>
+    <li><label><input type="checkbox"> Monitor Direct message API calls sending files or download links</label></li>
+    <li><label><input type="checkbox"> Identify Imgur or image hosting uploads from non-browser processes</label></li>
+    <li><label><input type="checkbox"> Look for social media posts containing pastebin links, GitHub gists, file sharing URLs</label></li>
+    <li><label><input type="checkbox"> Check API authentication tokens used for automated posting</label></li>
+    <li><label><input type="checkbox"> Review social media activity from service accounts or during off-hours</label></li>
+    <li><label><input type="checkbox"> Monitor multiple image uploads to Instagram/Imgur within short timeframe</label></li>
+</ul>
+
+<h2>5. Web-Based Email Attachments</h2>
+<ul>
+    <li><label><input type="checkbox"> Review Gmail/Outlook.com accessed from corporate systems sending &gt;10MB attachments</label></li>
+    <li><label><input type="checkbox"> Check multiple emails with attachments to same external personal account</label></li>
+    <li><label><input type="checkbox"> Monitor webmail from servers, databases, infrastructure systems</label></li>
+    <li><label><input type="checkbox"> Identify attachments matching staged files: backup.zip, data.rar, export.7z</label></li>
+    <li><label><input type="checkbox"> Look for emails sent during off-hours (00:00-06:00) from corporate systems</label></li>
+    <li><label><input type="checkbox"> Check temporary/anonymous email services: <a href="http://guerrillamail.com">guerrillamail.com</a>, <a href="http://temp-mail.org">temp-mail.org</a></label></li>
+    <li><label><input type="checkbox"> Review ProtonMail or encrypted email for data transfer</label></li>
+    <li><label><input type="checkbox"> Monitor sequential emails with attachments within 30-minute window</label></li>
+</ul>
+
+<h2>6. Collaboration Tool Abuse</h2>
+<ul>
+    <li><label><input type="checkbox"> Check Discord webhook POST: <a href="https://discord.com/api/webhooks/*/">https://discord.com/api/webhooks/*/</a> from PowerShell/scripts</label></li>
+    <li><label><input type="checkbox"> Review Slack webhook calls with large payloads or file attachments</label></li>
+    <li><label><input type="checkbox"> Monitor Teams file uploads from servers, databases, non-user systems</label></li>
+    <li><label><input type="checkbox"> Identify webhook invocations with base64-encoded data or file contents</label></li>
+    <li><label><input type="checkbox"> Look for multiple webhook calls within short timeframe from same system</label></li>
+    <li><label><input type="checkbox"> Check collaboration platform API usage from powershell.exe, python.exe, curl.exe</label></li>
+    <li><label><input type="checkbox"> Review file uploads to Slack/Discord from %TEMP%, C:\Users\Public\</label></li>
+    <li><label><input type="checkbox"> Monitor webhook URLs in scripts or scheduled tasks</label></li>
+</ul>
+
+<h2>7. Server and Infrastructure Uploads</h2>
+<ul>
+    <li><label><input type="checkbox"> Review database servers (SQL, Oracle, MySQL) uploading &gt;100MB to external services</label></li>
+    <li><label><input type="checkbox"> Check file servers or NAS accessing Dropbox, Google Drive, file sharing sites</label></li>
+    <li><label><input type="checkbox"> Monitor domain controllers accessing cloud storage or file sharing platforms</label></li>
+    <li><label><input type="checkbox"> Identify web servers (IIS, Apache, Nginx) uploading to external services</label></li>
+    <li><label><input type="checkbox"> Look for Exchange servers uploading to personal cloud storage</label></li>
+    <li><label><input type="checkbox"> Check backup servers transferring to non-approved cloud storage</label></li>
+    <li><label><input type="checkbox"> Review VMware/Hyper-V hosts accessing external file sharing</label></li>
+    <li><label><input type="checkbox"> Monitor upload volumes from servers exceeding 1GB within 24 hours</label></li>
+</ul>
+
+<h2>8. Non-Browser Process Web Access</h2>
+<ul>
+    <li><label><input type="checkbox"> Check powershell.exe with Invoke-WebRequest/Invoke-RestMethod to Dropbox API</label></li>
+    <li><label><input type="checkbox"> Review Python scripts accessing Google Drive API</label></li>
+    <li><label><input type="checkbox"> Monitor curl.exe uploading to WeTransfer or file sharing services</label></li>
+    <li><label><input type="checkbox"> Identify certutil.exe with URL parameters accessing web services</label></li>
+    <li><label><input type="checkbox"> Look for custom executables from %TEMP% connecting to cloud storage</label></li>
+    <li><label><input type="checkbox"> Check PowerShell with OAuth tokens or API keys for web service auth</label></li>
+    <li><label><input type="checkbox"> Review scheduled tasks executing upload scripts</label></li>
+    <li><label><input type="checkbox"> Monitor git.exe from non-developer systems pushing to external repos</label></li>
+</ul>
+
+<h2>9. Personal Account Usage</h2>
+<ul>
+    <li><label><input type="checkbox"> Review personal Gmail authentication followed by large email with attachment</label></li>
+    <li><label><input type="checkbox"> Check Dropbox personal account login with subsequent 500MB+ upload</label></li>
+    <li><label><input type="checkbox"> Monitor corporate → personal Drive session switches with file transfers</label></li>
+    <li><label><input type="checkbox"> Identify GitHub personal account with private repo creation from corporate systems</label></li>
+    <li><label><input type="checkbox"> Look for personal OneDrive authenticated from file/database servers</label></li>
+    <li><label><input type="checkbox"> Check account switches: corporate → personal → upload → logout</label></li>
+    <li><label><input type="checkbox"> Review personal accounts by employees with access to sensitive data</label></li>
+    <li><label><input type="checkbox"> Monitor service accounts accessing personal external services</label></li>
+</ul>
+
+<h2>10. Off-Hours and Service Account Activity</h2>
+<ul>
+    <li><label><input type="checkbox"> Review cloud storage uploads between 02:00-05:00 local time</label></li>
+    <li><label><input type="checkbox"> Check weekend uploads from Monday-Friday only employees</label></li>
+    <li><label><input type="checkbox"> Monitor service accounts (svc_*, SYSTEM) accessing Dropbox/Google Drive</label></li>
+    <li><label><input type="checkbox"> Identify scheduled tasks at 03:00 uploading to file sharing services</label></li>
+    <li><label><input type="checkbox"> Look for holiday period uploads when organization closed</label></li>
+    <li><label><input type="checkbox"> Check VDI web service uploads when user logged out</label></li>
+    <li><label><input type="checkbox"> Review service account PowerShell scripts uploading during off-hours</label></li>
+    <li><label><input type="checkbox"> Timeline: Data staging → Off-hours upload → External web service</label></li>
+</ul>
+
+
+</body>
+</html>
