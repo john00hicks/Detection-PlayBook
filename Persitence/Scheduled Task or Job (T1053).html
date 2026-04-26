@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Scheduled Task or Job (T1053)</title>
+	<style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background-color: #f5f5f5;
+        }
+        h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: flex-start;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+            margin-top: 4px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+	<h1>Scheduled Task/Job: <a href="https://attack.mitre.org/techniques/T1053/">T1053</a></h1>
+<h2>Detection Explanation</h2>
+<p>Adversaries may abuse task scheduling functionality to facilitate initial or recurring execution of malicious code. Utilities such as <code>at</code> and <code>schtasks</code>, along with the Windows Task Scheduler, can be used to schedule programs or scripts to be executed at a date and time. This technique is commonly used for persistence, privilege escalation, and remote execution. Variants include Scheduled Task (T1053.005), At (T1053.002), Cron (T1053.003), Systemd Timers (T1053.006), and Container Orchestration Jobs (T1053.007).</p>
+<h2>Key Detection Indicators &amp; Areas to Investigate</h2>
+<h3>Scheduled Task Creation and Modification (Windows)</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4698 (Scheduled task created) - New task registration</li>
+<li>Event ID 4702 (Scheduled task updated) - Task modification</li>
+<li>Event ID 4699 (Scheduled task deleted) - Task removal</li>
+<li>Event ID 4700 (Scheduled task enabled)</li>
+<li>Event ID 4701 (Scheduled task disabled)</li>
+</ul>
+<p><strong>Task Scheduler Operational Log:</strong></p>
+<ul>
+<li>Event ID 106 (Task registered)</li>
+<li>Event ID 140 (Task updated)</li>
+<li>Event ID 141 (Task deleted)</li>
+<li>Event ID 200 (Task action started - execution)</li>
+<li>Event ID 201 (Task action completed)</li>
+<li>Event ID 325 (Launch request queued)</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - <code>schtasks.exe</code>, <code>taskeng.exe</code>, <code>taskhostw.exe</code> execution</li>
+<li>Event ID 11 (File creation) - Task XML files created in <code>C:\Windows\System32\Tasks\</code></li>
+</ul>
+<p><strong>Fields to analyze:</strong></p>
+<ul>
+<li>Task name and path</li>
+<li>Task author/creator</li>
+<li>Command/executable being scheduled</li>
+<li>Trigger type (time, logon, startup, idle)</li>
+<li>User account task runs as (SYSTEM, administrator, user)</li>
+<li>Task creation timestamp</li>
+</ul>
+<hr>
+<h3>Suspicious Task Characteristics</h3>
+<p><strong>Command-line indicators:</strong></p>
+<ul>
+<li>Use of <code>schtasks.exe</code> with <code>/create</code>, <code>/change</code>, or <code>/run</code> parameters</li>
+<li>PowerShell commands: <code>Register-ScheduledTask</code>, <code>New-ScheduledTask</code></li>
+<li>COM object usage: <code>Schedule.Service</code> object in scripts</li>
+</ul>
+<p><strong>Suspicious task properties:</strong></p>
+<ul>
+<li>Tasks running with SYSTEM or elevated privileges</li>
+<li>Tasks executing from unusual locations: <code>%TEMP%</code>, <code>%APPDATA%</code>, <code>C:\Users\Public\</code></li>
+<li>Hidden tasks (not visible in GUI but exist in <code>C:\Windows\System32\Tasks\</code>)</li>
+<li>Tasks with no description or generic names</li>
+<li>Tasks running frequently (every minute, every 5 minutes)</li>
+<li>Tasks with multiple actions or chained commands</li>
+</ul>
+<p><strong>Suspicious executables/actions:</strong></p>
+<ul>
+<li><code>powershell.exe</code>, <code>cmd.exe</code>, <code>wscript.exe</code>, <code>cscript.exe</code>, <code>mshta.exe</code></li>
+<li>Encoded PowerShell commands (<code>-enc</code>, <code>-encodedcommand</code>)</li>
+<li>Obfuscated scripts or commands</li>
+<li>Download cradles: <code>IEX</code>, <code>Invoke-WebRequest</code>, <code>wget</code>, <code>curl</code>, <code>certutil</code>, <code>bitsadmin</code></li>
+<li>Living-off-the-land binaries: <code>rundll32.exe</code>, <code>regsvr32.exe</code>, <code>msiexec.exe</code></li>
+</ul>
+<hr>
+<h3>Task Execution and Process Creation</h3>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - Tasks executed by Task Scheduler engine</li>
+</ul>
+<p><strong>Parent processes:</strong></p>
+<ul>
+<li><code>taskeng.exe</code> (Windows 7/Server 2008)</li>
+<li><code>taskhostw.exe</code> (Windows 8+)</li>
+<li><code>svchost.exe</code> with Task Scheduler service</li>
+</ul>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4688 (Process creation) - Scheduled task spawning processes</li>
+<li>Event ID 4104 (PowerShell script block logging) - Script content from scheduled tasks</li>
+</ul>
+<p><strong>Behavioral indicators:</strong></p>
+<ul>
+<li>Scheduled tasks spawning network connections</li>
+<li>Tasks executing at unusual times (3 AM, weekends)</li>
+<li>Tasks running during off-hours but no interactive user logged in</li>
+<li>Process trees showing task scheduler → malicious binary → lateral movement tools</li>
+</ul>
+<hr>
+<h3>Task Persistence Patterns</h3>
+<p><strong>Common persistence task configurations:</strong></p>
+<ul>
+<li>Trigger: On startup, on logon, or recurring intervals</li>
+<li>Run whether user is logged on or not</li>
+<li>Run with highest privileges</li>
+<li>Hidden from Task Scheduler UI</li>
+</ul>
+<p><strong>Task XML analysis locations:</strong></p>
+<ul>
+<li><code>C:\Windows\System32\Tasks\</code> - Primary task definition storage</li>
+<li><code>C:\Windows\Tasks\</code> - Legacy .job files (older Windows versions)</li>
+</ul>
+<p><strong>XML elements to review:</strong></p>
+<ul>
+<li><code>&lt;Command&gt;</code> - Executable path</li>
+<li><code>&lt;Arguments&gt;</code> - Command-line parameters</li>
+<li><code>&lt;WorkingDirectory&gt;</code> - Execution directory</li>
+<li><code>&lt;UserId&gt;</code> - Account context</li>
+<li><code>&lt;LogonType&gt;</code> - Interactive, password, S4U</li>
+<li><code>&lt;RunLevel&gt;</code> - Highest privileges, least privileges</li>
+<li><code>&lt;Triggers&gt;</code> - Execution conditions</li>
+<li><code>&lt;Hidden&gt;</code> - Task visibility</li>
+</ul>
+<p><strong>PowerShell hunting:</strong></p>
+<ul>
+<li><code>Get-ScheduledTask | Where-Object {$_.TaskPath -notlike &quot;\Microsoft\*&quot;}</code></li>
+<li>Review task principals, actions, and triggers</li>
+<li>Check for tasks in non-standard paths</li>
+</ul>
+<hr>
+<h3>Remote Task Scheduling</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4698 (Task created) with network logon type</li>
+<li>Event ID 4624 (Logon) Type 3 (Network) preceding task creation</li>
+<li>Event ID 4672 (Special privileges assigned) for remote task creation</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 3 (Network connection) - RPC connections to Task Scheduler (port 135, dynamic RPC ports)</li>
+<li>Event ID 1 (Process creation) - <code>schtasks.exe</code> with <code>/s</code> parameter (remote system)</li>
+</ul>
+<p><strong>Network indicators:</strong></p>
+<ul>
+<li>RPC traffic to port 135 (endpoint mapper)</li>
+<li>SMB traffic (ports 445, 139) for authentication</li>
+<li>Task Scheduler RPC interface access</li>
+<li>Authentication to IPC$ share</li>
+</ul>
+<p><strong>Command-line patterns:</strong></p>
+<ul>
+<li><code>schtasks /create /s [remote_host] /u [username] /p [password]</code></li>
+<li><code>at \\[remote_host] [time] [command]</code> (legacy)</li>
+<li>PowerShell remoting for task creation: <code>Invoke-Command -ComputerName</code></li>
+</ul>
+<hr>
+<h3>AT Command (Legacy - Windows Server 2008 and earlier)</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4698 (Scheduled task created) - Still logged for AT jobs</li>
+<li>Event ID 601 (Task Scheduler) - AT job creation</li>
+</ul>
+<p><strong>Files to monitor:</strong></p>
+<ul>
+<li><code>C:\Windows\Tasks\*.job</code> - AT command job files</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - <code>at.exe</code> execution</li>
+<li>Event ID 11 (File creation) - .job file creation in <code>C:\Windows\Tasks\</code></li>
+</ul>
+<p><strong>Command-line patterns:</strong></p>
+<ul>
+<li><code>at [time] [command]</code></li>
+<li><code>at \\[computer] [time] [command]</code></li>
+<li><code>at [id] /delete</code></li>
+</ul>
+<p><strong>Note:</strong> AT command deprecated in modern Windows but may indicate older malware or legacy attack techniques</p>
+<hr>
+<h3>Cron Jobs (Linux/Unix)</h3>
+<p><strong>Log locations:</strong></p>
+<ul>
+<li><code>/var/log/cron</code> - Cron daemon logs</li>
+<li><code>/var/log/syslog</code> - System logs including cron activity</li>
+<li><code>journalctl -u cron</code> - Systemd journal for cron service</li>
+</ul>
+<p><strong>Crontab file locations:</strong></p>
+<ul>
+<li><code>/etc/crontab</code> - System-wide crontab</li>
+<li><code>/etc/cron.d/</code> - Additional system cron jobs</li>
+<li><code>/var/spool/cron/crontabs/</code> - User-specific crontabs</li>
+<li><code>/etc/cron.daily/</code>, <code>/etc/cron.hourly/</code>, <code>/etc/cron.weekly/</code>, <code>/etc/cron.monthly/</code> - Periodic scripts</li>
+</ul>
+<p><strong>Monitoring approaches:</strong></p>
+<ul>
+<li>File integrity monitoring on crontab files</li>
+<li>Process monitoring for <code>cron</code> spawning unusual commands</li>
+<li>Audit daemon logs for crontab modifications</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Cron jobs running as root with commands from writable directories</li>
+<li>Reverse shells or network connections in cron jobs</li>
+<li>Download commands: <code>wget</code>, <code>curl</code>, <code>nc</code> in cron entries</li>
+<li>Obfuscated or encoded commands</li>
+<li>Cron jobs created in <code>/tmp</code>, <code>/dev/shm</code>, or user home directories</li>
+</ul>
+<hr>
+<h3>Systemd Timers (Linux)</h3>
+<p><strong>Systemd timer locations:</strong></p>
+<ul>
+<li><code>/etc/systemd/system/*.timer</code> - System timer units</li>
+<li><code>/usr/lib/systemd/system/*.timer</code> - Distribution timer units</li>
+<li><code>~/.config/systemd/user/*.timer</code> - User timer units</li>
+</ul>
+<p><strong>Associated service files:</strong></p>
+<ul>
+<li><code>.service</code> files paired with <code>.timer</code> files</li>
+<li>Service unit definitions containing commands to execute</li>
+</ul>
+<p><strong>Journal logs:</strong></p>
+<ul>
+<li><code>journalctl -u [timer_name]</code> - Timer activation logs</li>
+<li><code>journalctl -u [service_name]</code> - Service execution logs</li>
+</ul>
+<p><strong>Systemd commands for hunting:</strong></p>
+<ul>
+<li><code>systemctl list-timers --all</code> - List all timers</li>
+<li><code>systemctl status [timer_name]</code> - Timer details</li>
+<li><code>systemd-analyze calendar [timer_expression]</code> - Verify timer schedule</li>
+</ul>
+<p><strong>Suspicious indicators:</strong></p>
+<ul>
+<li>Timers with no package association</li>
+<li>Service files executing from <code>/tmp</code>, <code>/var/tmp</code>, or user directories</li>
+<li>Commands downloading or executing scripts from internet</li>
+<li>Timers running with elevated privileges</li>
+<li>Recently created timer/service pairs</li>
+</ul>
+<hr>
+<h3>Container Orchestration Job Scheduling</h3>
+<p><strong>Kubernetes CronJobs:</strong></p>
+<ul>
+<li><code>kubectl get cronjobs --all-namespaces</code> - List all cron jobs</li>
+<li>Kubernetes API audit logs - CronJob creation/modification events</li>
+<li>Pod creation logs tied to CronJob execution</li>
+</ul>
+<p><strong>Kubernetes indicators:</strong></p>
+<ul>
+<li>CronJobs in unusual namespaces</li>
+<li>Jobs with privileged security contexts</li>
+<li>Jobs mounting host volumes</li>
+<li>Container images from untrusted registries</li>
+<li>Jobs with network access to sensitive resources</li>
+</ul>
+<p><strong>Docker/Container logs:</strong></p>
+<ul>
+<li>Container runtime logs showing scheduled container execution</li>
+<li>Docker event logs for container starts from scheduled tasks</li>
+</ul>
+<hr>
+<h3>Task Scheduler Service Abuse</h3>
+<p><strong>Service manipulation:</strong></p>
+<ul>
+<li>Event ID 7045 (Service installed) - Task Scheduler service modifications</li>
+<li>Event ID 7040 (Service start type changed)</li>
+</ul>
+<p><strong>Registry locations:</strong></p>
+<ul>
+<li><code>HKLM\SYSTEM\CurrentControlSet\Services\Schedule</code> - Task Scheduler service configuration</li>
+</ul>
+<p><strong>DLL hijacking in Task Scheduler:</strong></p>
+<ul>
+<li>Sysmon Event ID 7 (Image loaded) - DLLs loaded by Task Scheduler processes</li>
+<li>Unsigned or suspicious DLLs loaded by <code>taskeng.exe</code>, <code>svchost.exe</code> (Schedule service)</li>
+</ul>
+<hr>
+<h3>COM Task Scheduler Object Abuse</h3>
+<p><strong>Script/Process indicators:</strong></p>
+<ul>
+<li>PowerShell or VBScript using <code>Schedule.Service</code> COM object</li>
+<li>Script content creating tasks via COM API</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 1 (Process creation) - PowerShell/scripts with Task Scheduler COM usage</li>
+</ul>
+<p><strong>Script patterns:</strong></p>
+<ul>
+<li><code>$schedule = New-Object -ComObject Schedule.Service</code></li>
+<li><code>$schedule.Connect()</code></li>
+<li><code>$task = $schedule.NewTask(0)</code></li>
+<li>VBScript: <code>Set objSchedule = CreateObject(&quot;Schedule.Service&quot;)</code></li>
+</ul>
+<p><strong>Detection approaches:</strong></p>
+<ul>
+<li>PowerShell script block logging (Event ID 4104) containing Schedule.Service</li>
+<li>Process command-line containing COM task creation patterns</li>
+</ul>
+<hr>
+<h3>Persistence via Task Import/Export</h3>
+<p><strong>Task export/import operations:</strong></p>
+<ul>
+<li><code>schtasks /query /xml</code> - Task definition export</li>
+<li><code>schtasks /create /xml [file]</code> - Task import from XML</li>
+</ul>
+<p><strong>Sysmon:</strong></p>
+<ul>
+<li>Event ID 11 (File creation) - XML task definition files</li>
+<li>Event ID 1 (Process creation) - schtasks with /xml parameter</li>
+</ul>
+<p><strong>Attack patterns:</strong></p>
+<ul>
+<li>Exporting legitimate task, modifying XML, re-importing</li>
+<li>Importing task definitions from external sources</li>
+<li>Base64 encoded task XML in command-line</li>
+</ul>
+<hr>
+<h3>High-Privilege Task Execution</h3>
+<p><strong>Privilege escalation indicators:</strong></p>
+<ul>
+<li>Event ID 4698 (Task created) with <code>&lt;UserId&gt;</code> set to SYSTEM, Administrators</li>
+<li>Event ID 4672 (Special privileges assigned) following task execution</li>
+<li>Event ID 4688 (Process creation) showing SYSTEM-level processes from tasks</li>
+</ul>
+<p><strong>UAC bypass via tasks:</strong></p>
+<ul>
+<li>Tasks configured to run with highest privileges</li>
+<li>Tasks bypassing UAC prompts</li>
+<li>Silent elevation through Task Scheduler</li>
+</ul>
+<p><strong>Credential theft opportunities:</strong></p>
+<ul>
+<li>Tasks running with stored credentials</li>
+<li>Password in task XML or command-line (rare but occurs)</li>
+</ul>
+<hr>
+<h3>Lateral Movement via Scheduled Tasks</h3>
+<p><strong>Network activity correlation:</strong></p>
+<ul>
+<li>Event ID 4624 Type 3 (Network logon) → Event ID 4698 (Task created)</li>
+<li>Remote task creation following authentication</li>
+<li>SMB/RPC traffic patterns indicating remote task scheduling</li>
+</ul>
+<p><strong>Tools and techniques:</strong></p>
+<ul>
+<li>PsExec with <code>-s</code> flag using Task Scheduler</li>
+<li>Impacket’s <code>atexec.py</code> for remote AT command execution</li>
+<li>PowerShell remoting with scheduled task creation</li>
+<li>WMIC remote task creation</li>
+</ul>
+<p><strong>Detection patterns:</strong></p>
+<ul>
+<li>Task creation on multiple systems in short time window</li>
+<li>Similar or identical tasks across multiple hosts</li>
+<li>Tasks created via administrative shares (ADMIN,C, C ,C)</li>
+</ul>
+<hr>
+<h3>Task Modification and Deletion for Defense Evasion</h3>
+<p><strong>Windows Event Logs:</strong></p>
+<ul>
+<li>Event ID 4699 (Task deleted) - Evidence removal</li>
+<li>Event ID 4702 (Task updated) - Modification to hide or change behavior</li>
+<li>Event ID 141 (Task deleted from Task Scheduler)</li>
+</ul>
+<p><strong>Evasion techniques:</strong></p>
+<ul>
+<li>Deleting tasks after execution</li>
+<li>Disabling tasks to avoid repeated execution</li>
+<li>Modifying task triggers to make execution unpredictable</li>
+<li>Clearing Task Scheduler operational logs</li>
+</ul>
+<p><strong>Forensic considerations:</strong></p>
+<ul>
+<li>Residual XML files even after task deletion</li>
+<li>Event log correlation of creation, execution, and deletion</li>
+<li>File system timestamps on task definitions</li>
+</ul>
+<hr>
+<h2>Additional Investigation Areas</h2>
+<p><strong>Task Scheduler Database:</strong></p>
+<ul>
+<li><code>C:\Windows\System32\Tasks\</code> directory enumeration</li>
+<li>Compare task database to registry entries</li>
+<li>Identify orphaned or hidden tasks</li>
+</ul>
+<p><strong>Authentication Logs:</strong></p>
+<ul>
+<li>Correlate task creation with user authentication events</li>
+<li>Track which accounts are creating scheduled tasks</li>
+<li>Identify service accounts used for scheduled task execution</li>
+</ul>
+<p><strong>Network Monitoring:</strong></p>
+<ul>
+<li>RPC traffic analysis for remote task creation</li>
+<li>Command and control (C2) beaconing aligned with task execution schedules</li>
+<li>Outbound connections immediately following task execution</li>
+</ul>
+<p><strong>PowerShell Logging:</strong></p>
+<ul>
+<li>Event ID 4103 (Module logging)</li>
+<li>Event ID 4104 (Script block logging)</li>
+<li>Event ID 4105/4106 (Script start/stop)</li>
+<li>Review for Task Scheduler cmdlets and COM object usage</li>
+</ul>
+<p><strong>Baseline Establishment:</strong></p>
+<ul>
+<li>Inventory all legitimate scheduled tasks</li>
+<li>Document business-critical automation tasks</li>
+<li>Alert on new tasks outside of change management</li>
+<li>Track task creation by user/system accounts</li>
+</ul>
+<p><strong>Correlation Opportunities:</strong></p>
+<ul>
+<li>Task creation → File download → Process execution → Network beaconing</li>
+<li>User compromise → Task creation with persistence → Credential access</li>
+<li>Lateral movement → Remote task creation → Data exfiltration</li>
+<li>Initial access → Scheduled task for callback → Privilege escalation</li>
+</ul>
+<hr>
+<h1>Scheduled Task/Job Investigation Checklist</h1>
+
+<h2>1. Task Creation and Modification (Windows)</h2>
+<ul>
+  <li><label><input type="checkbox"> Review Event ID 4698/4702/4699 for task creation, updates, and deletions</label></li>
+  <li><label><input type="checkbox"> Check Task Scheduler Operational log Event ID 106/140/141/200/201</label></li>
+  <li><label><input type="checkbox"> Monitor Sysmon Event ID 1 for schtasks.exe, taskeng.exe, taskhostw.exe execution</label></li>
+  <li><label><input type="checkbox"> Review Sysmon Event ID 11 for task XML files in C:\Windows\System32\Tasks\</label></li>
+  <li><label><input type="checkbox"> Identify task author, creation timestamp, and user account context</label></li>
+  <li><label><input type="checkbox"> Check for PowerShell commands: Register-ScheduledTask, New-ScheduledTask</label></li>
+</ul>
+
+<h2>2. Suspicious Task Characteristics</h2>
+<ul>
+  <li><label><input type="checkbox"> Identify tasks running with SYSTEM or elevated privileges</label></li>
+  <li><label><input type="checkbox"> Check for tasks executing from %TEMP%, %APPDATA%, C:\Users\Public\</label></li>
+  <li><label><input type="checkbox"> Look for hidden tasks not visible in GUI but existing in C:\Windows\System32\Tasks\</label></li>
+  <li><label><input type="checkbox"> Search for tasks with generic names or no description</label></li>
+  <li><label><input type="checkbox"> Review tasks running frequently (every minute/5 minutes)</label></li>
+  <li><label><input type="checkbox"> Identify tasks executing powershell.exe, cmd.exe, wscript.exe, mshta.exe</label></li>
+  <li><label><input type="checkbox"> Check for encoded PowerShell commands: -enc, -encodedcommand</label></li>
+</ul>
+
+<h2>3. Task Actions and Commands</h2>
+<ul>
+  <li><label><input type="checkbox"> Search for download cradles: IEX, Invoke-WebRequest, wget, curl, certutil, bitsadmin</label></li>
+  <li><label><input type="checkbox"> Identify LOLBins: rundll32.exe, regsvr32.exe, msiexec.exe in task actions</label></li>
+  <li><label><input type="checkbox"> Review obfuscated scripts or Base64 encoded commands</label></li>
+  <li><label><input type="checkbox"> Check for tasks with multiple actions or chained commands</label></li>
+  <li><label><input type="checkbox"> Analyze task XML Command, Arguments, and WorkingDirectory elements</label></li>
+  <li><label><input type="checkbox"> Verify RunLevel (highest/least privileges) and Hidden properties</label></li>
+</ul>
+
+<h2>4. Task Execution Monitoring</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 1 for parent processes: taskeng.exe, taskhostw.exe, svchost.exe</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4688/4104 for scheduled task spawning processes or scripts</label></li>
+  <li><label><input type="checkbox"> Identify tasks executing at unusual times (3 AM, weekends, off-hours)</label></li>
+  <li><label><input type="checkbox"> Monitor scheduled tasks spawning network connections</label></li>
+  <li><label><input type="checkbox"> Correlate task execution with no interactive user logged in</label></li>
+</ul>
+
+<h2>5. Task Persistence Patterns</h2>
+<ul>
+  <li><label><input type="checkbox"> Identify tasks with triggers: On startup, on logon, recurring intervals</label></li>
+  <li><label><input type="checkbox"> Check for “Run whether user is logged on or not” configuration</label></li>
+  <li><label><input type="checkbox"> Review PowerShell: <code>Get-ScheduledTask | Where-Object {$_.TaskPath -notlike "\Microsoft\*"}</code></label></li>
+  <li><label><input type="checkbox"> Analyze task principals, actions, triggers, and LogonType settings</label></li>
+  <li><label><input type="checkbox"> Verify tasks in non-standard paths outside \Microsoft\ namespace</label></li>
+</ul>
+
+<h2>6. Remote Task Scheduling</h2>
+<ul>
+  <li><label><input type="checkbox"> Correlate Event ID 4698 (task created) with Event ID 4624 Type 3 (Network logon)</label></li>
+  <li><label><input type="checkbox"> Check Sysmon Event ID 3 for RPC connections to port 135 and dynamic RPC ports</label></li>
+  <li><label><input type="checkbox"> Review schtasks.exe with /s parameter for remote system targeting</label></li>
+  <li><label><input type="checkbox"> Search for command patterns: <code>schtasks /create /s [remote_host]</code></label></li>
+  <li><label><input type="checkbox"> Monitor SMB traffic (ports 445, 139) preceding task creation</label></li>
+  <li><label><input type="checkbox"> Identify PowerShell remoting for task creation: Invoke-Command</label></li>
+</ul>
+
+<h2>7. AT Command (Legacy)</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4698/601 for AT job creation</label></li>
+  <li><label><input type="checkbox"> Monitor C:\Windows\Tasks*.job file creation (Sysmon Event ID 11)</label></li>
+  <li><label><input type="checkbox"> Review at.exe execution (Sysmon Event ID 1)</label></li>
+  <li><label><input type="checkbox"> Search for command patterns: <code>at [time] [command]</code> or <code>at \\[computer]</code></label></li>
+</ul>
+
+<h2>8. Linux Cron Jobs</h2>
+<ul>
+  <li><label><input type="checkbox"> Review /var/log/cron and /var/log/syslog for cron activity</label></li>
+  <li><label><input type="checkbox"> Check /etc/crontab, /etc/cron.d/, /var/spool/cron/crontabs/ for modifications</label></li>
+  <li><label><input type="checkbox"> Monitor /etc/cron.daily/, cron.hourly/, cron.weekly/, cron.monthly/ directories</label></li>
+  <li><label><input type="checkbox"> Identify cron jobs running as root from writable directories</label></li>
+  <li><label><input type="checkbox"> Search for download commands: wget, curl, nc in cron entries</label></li>
+  <li><label><input type="checkbox"> Look for obfuscated or encoded commands in crontabs</label></li>
+</ul>
+
+<h2>9. Linux Systemd Timers</h2>
+<ul>
+  <li><label><input type="checkbox"> List timers: <code>systemctl list-timers --all</code></label></li>
+  <li><label><input type="checkbox"> Check /etc/systemd/system/*.timer and ~/.config/systemd/user/*.timer</label></li>
+  <li><label><input type="checkbox"> Review associated .service files for command execution</label></li>
+  <li><label><input type="checkbox"> Query journals: <code>journalctl -u [timer_name]</code> for activation logs</label></li>
+  <li><label><input type="checkbox"> Identify timers with no package association</label></li>
+  <li><label><input type="checkbox"> Look for service files executing from /tmp, /var/tmp, user directories</label></li>
+</ul>
+
+<h2>10. High-Privilege Task Execution</h2>
+<ul>
+  <li><label><input type="checkbox"> Check Event ID 4698 with UserId set to SYSTEM or Administrators</label></li>
+  <li><label><input type="checkbox"> Review Event ID 4672 (Special privileges) following task execution</label></li>
+  <li><label><input type="checkbox"> Identify tasks configured to run with highest privileges</label></li>
+  <li><label><input type="checkbox"> Look for UAC bypass via Task Scheduler silent elevation</label></li>
+  <li><label><input type="checkbox"> Check for tasks running with stored credentials</label></li>
+</ul>
+
+<h2>11. Lateral Movement Detection</h2>
+<ul>
+  <li><label><input type="checkbox"> Timeline: Event ID 4624 Type 3 → Event ID 4698 (task creation)</label></li>
+  <li><label><input type="checkbox"> Identify task creation on multiple systems in short time windows</label></li>
+  <li><label><input type="checkbox"> Look for similar or identical tasks across multiple hosts</label></li>
+  <li><label><input type="checkbox"> Monitor PsExec, Impacket <a href="http://atexec.py">atexec.py</a>, or WMIC remote task patterns</label></li>
+  <li><label><input type="checkbox"> Check for tasks created via administrative shares (ADMIN$, C$, C )</label></li>
+</ul>
+
+</body>
+</html>
